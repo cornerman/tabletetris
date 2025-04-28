@@ -501,84 +501,146 @@
         const debouncedTriggerSolutionUpdate = debounce(triggerSolutionUpdate, DEBOUNCE_DELAY);
 
 
-        // --- NEW: Find Tables using BFS ---
+        // --- NEW: Find Tables using BFS and Path Tracing ---
         function findTables(resultMatrix, people) {
             const n = people.length;
             if (n === 0) return [];
 
             const indexToPerson = new Map(people.map((p, index) => [index, p]));
-            const visited = new Set();
-            const tables = [];
+            const visited = new Set(); // Keep track of visited indices globally across tables
+            const tables = []; // Will store arrays of ordered Person objects: Person[][]
 
             for (let i = 0; i < n; i++) {
                 if (!visited.has(i)) {
-                    // Start BFS for a new table
-                    const currentTablePeople = [];
+                    // Found the start of a potential new table
+                    const currentTableIndices = new Set();
                     const queue = [i];
                     visited.add(i);
+                    currentTableIndices.add(i);
                     console.log(`[DEBUG] findTables: Starting BFS for new table from person index ${i} (${indexToPerson.get(i)?.name})`);
 
+                    // 1. BFS to find all members of this table
                     while (queue.length > 0) {
-                        const currentIdx = queue.shift(); // Dequeue
-                        const currentPerson = indexToPerson.get(currentIdx);
-                        if (currentPerson) {
-                            currentTablePeople.push(currentPerson.name); // Add name to table
-                            console.log(`[DEBUG] findTables: Added ${currentPerson.name} (index ${currentIdx}) to current table.`);
-                        } else {
-                            console.warn(`[DEBUG] findTables: Could not find person for index ${currentIdx}`);
-                            currentTablePeople.push(`Unknown (Index ${currentIdx})`);
-                        }
+                        const currentIdx = queue.shift();
 
-
-                        // Find neighbors
                         for (let neighborIdx = 0; neighborIdx < n; neighborIdx++) {
-                            // Check edge exists and neighbor hasn't been visited
                             if (resultMatrix[currentIdx][neighborIdx] === 1 && !visited.has(neighborIdx)) {
                                 visited.add(neighborIdx);
+                                currentTableIndices.add(neighborIdx);
                                 queue.push(neighborIdx);
-                                console.log(`[DEBUG] findTables: Found unvisited neighbor ${indexToPerson.get(neighborIdx)?.name} (index ${neighborIdx}), adding to queue.`);
+                                console.log(`[DEBUG] findTables: BFS found connection ${currentIdx} -> ${neighborIdx}. Adding ${indexToPerson.get(neighborIdx)?.name} (index ${neighborIdx}) to table members.`);
                             }
                         }
                     }
-                    // BFS for this component is done, add the found table
-                    if (currentTablePeople.length > 0) {
-                        console.log(`[DEBUG] findTables: Finished table: [${currentTablePeople.join(', ')}]`);
-                        tables.push(currentTablePeople);
-                    } else {
-                        console.log(`[DEBUG] findTables: Finished BFS for index ${i}, but table was empty?`);
-                    }
-                }
-            }
+                    console.log(`[DEBUG] findTables: Finished BFS for table starting at index ${i}. Members: [${Array.from(currentTableIndices).join(', ')}]`);
 
-            if (visited.size !== n) {
-                console.warn(`[DEBUG] findTables: Visited count (${visited.size}) does not match total people (${n}). Some people might be isolated.`);
-                // Add isolated people as tables of one
-                for (let i = 0; i < n; i++) {
-                    if (!visited.has(i)) {
-                        const isolatedPerson = indexToPerson.get(i);
-                        if (isolatedPerson) {
-                            console.log(`[DEBUG] findTables: Adding isolated person ${isolatedPerson.name} as a table.`);
-                            tables.push([isolatedPerson.name]);
+                    // 2. Determine the ordered path for the found table
+                    const orderedTablePeople = []; // Array of Person objects
+                    const numPeopleInTable = currentTableIndices.size;
+
+                    if (numPeopleInTable === 1) {
+                        orderedTablePeople.push(indexToPerson.get(i));
+                        console.log(`[DEBUG] findTables: Found table of size 1: [${indexToPerson.get(i)?.name}]`);
+                    } else if (numPeopleInTable === 2) {
+                        const indices = Array.from(currentTableIndices);
+                        orderedTablePeople.push(indexToPerson.get(indices[0]));
+                        orderedTablePeople.push(indexToPerson.get(indices[1]));
+                        console.log(`[DEBUG] findTables: Found table of size 2: [${indexToPerson.get(indices[0])?.name}, ${indexToPerson.get(indices[1])?.name}]`);
+                    } else if (numPeopleInTable > 2) {
+                        // Trace the cycle
+                        let startIdx = i; // Start with the index that initiated the BFS
+                        let currentIdx = startIdx;
+                        let prevIdx = -1; // Sentinel value for the first step
+
+                        console.log(`[DEBUG] findTables: Tracing cycle for table starting at ${startIdx} (${indexToPerson.get(startIdx)?.name}). Size: ${numPeopleInTable}`);
+
+                        for (let step = 0; step < numPeopleInTable; step++) {
+                            const currentPerson = indexToPerson.get(currentIdx);
+                            if (!currentPerson) {
+                                console.error(`[DEBUG] findTables: Error! Could not find person for index ${currentIdx} during cycle trace.`);
+                                break; // Abort tracing for this table
+                            }
+                            orderedTablePeople.push(currentPerson);
+                            console.log(`[DEBUG] findTables: Added ${currentPerson.name} (idx ${currentIdx}) to ordered table.`);
+
+                            let foundNext = false;
+                            for (let neighborIdx = 0; neighborIdx < n; neighborIdx++) {
+                                // Must be connected, part of this table, and not the person we just came from
+                                if (resultMatrix[currentIdx][neighborIdx] === 1 &&
+                                    currentTableIndices.has(neighborIdx) &&
+                                    neighborIdx !== prevIdx) {
+                                    console.log(`[DEBUG] findTables: Found next neighbor for ${currentIdx}: ${neighborIdx} (${indexToPerson.get(neighborIdx)?.name}). Previous was ${prevIdx}.`);
+                                    prevIdx = currentIdx;
+                                    currentIdx = neighborIdx;
+                                    foundNext = true;
+                                    break; // Move to the next person in the cycle
+                                }
+                            }
+
+                            // Safety check: If we completed a step but didn't find the next person (and it wasn't the last step returning to start)
+                            if (!foundNext && step < numPeopleInTable - 1) {
+                                console.warn(`[DEBUG] findTables: Could not find the next unique neighbor for index ${prevIdx} in the cycle. Table might be malformed or linear. Aborting trace for this table.`);
+                                // Clear the partial table to indicate failure? Or return the partial? Let's clear it.
+                                orderedTablePeople.length = 0;
+                                break;
+                            }
+                            // The loop condition (step < numPeopleInTable) handles the termination.
+                            // The last step should naturally lead back to startIdx's neighbor, which is valid.
+                        }
+                        // Verify cycle completion (optional sanity check)
+                        if (orderedTablePeople.length === numPeopleInTable) {
+                            const lastPersonIndex = people.findIndex(p => p.id === orderedTablePeople[numPeopleInTable - 1].id);
+                            const firstPersonIndex = people.findIndex(p => p.id === orderedTablePeople[0].id);
+                            if (resultMatrix[lastPersonIndex][firstPersonIndex] !== 1) {
+                                console.warn(`[DEBUG] findTables: Cycle trace completed, but the last person (${orderedTablePeople[numPeopleInTable - 1].name}) is not connected back to the first (${orderedTablePeople[0].name}) in the resultMatrix!`);
+                            } else {
+                                console.log(`[DEBUG] findTables: Cycle trace completed successfully for table starting at index ${i}.`);
+                            }
+                        } else if (orderedTablePeople.length > 0) {
+                            console.warn(`[DEBUG] findTables: Cycle trace for table starting at index ${i} finished with ${orderedTablePeople.length} people, but expected ${numPeopleInTable}.`);
+                        }
+
+                    }
+
+                    // Add the ordered table (if found correctly) to the results
+                    if (orderedTablePeople.length > 0) {
+                        // Check if all people in the table are valid objects
+                        if (orderedTablePeople.every(p => p && typeof p === 'object' && p.hasOwnProperty('id') && p.hasOwnProperty('name'))) {
+                            tables.push(orderedTablePeople);
+                            console.log(`[DEBUG] findTables: Successfully added ordered table: [${orderedTablePeople.map(p => p.name).join(', ')}]`);
                         } else {
-                            tables.push([`Unknown (Index ${i})`]);
+                            console.error(`[DEBUG] findTables: Error! Table starting at index ${i} contained invalid person data after tracing. Table:`, orderedTablePeople);
+                        }
+                    } else {
+                        // Handle cases where tracing failed or table was size 0 (shouldn't happen if BFS found members)
+                        if (numPeopleInTable > 0) {
+                            console.warn(`[DEBUG] findTables: Failed to determine ordered path for table starting at index ${i}. Members found by BFS: ${Array.from(currentTableIndices).join(', ')}. Skipping this table.`);
                         }
                     }
                 }
             }
 
+            // Note: This modification removes the check for isolated people explicitly,
+            // as the main loop iterating `i` from 0 to n and the `!visited.has(i)` check
+            // will naturally handle starting BFS from any unvisited node, including isolated ones (size 1 tables).
 
-            console.log("[DEBUG] findTables: Final tables found:", JSON.stringify(tables));
-            return tables;
+            console.log("[DEBUG] findTables: Final ordered tables found:", JSON.stringify(tables.map(t => t.map(p => p.name))));
+            return tables; // Return Person[][]
         }
 
-        // --- NEW: Display Tables using Enhanced SVG ---
-        function displayTables(tables, container) {
-            container.innerHTML = '<h3>Sitting Arrangement (Tables):</h3>'; // Clear previous content and add title
+        // --- NEW: Display Tables using Enhanced SVG (accepts Person[][]) ---
+        function displayTables(tables, container) { // tables is now Person[][]
+            // Clear previous results first
+            while (container.firstChild) {
+                container.removeChild(container.firstChild);
+            }
+            container.innerHTML = '<h3>Sitting Arrangement (Tables):</h3>'; // Add title back
 
-            if (tables.length === 0) {
+            if (!tables || tables.length === 0) {
                 let message = '';
+                // Check global people array state here
                 if (people.length > 0) {
-                    message = '<p style="color: orange;">Could not determine any seating arrangements (maybe no one sits together?).</p>';
+                    message = '<p style="color: orange;">Could not determine any seating arrangements (maybe no one sits together, or solver failed?).</p>';
                 } else {
                     message = '<p>No people defined.</p>';
                 }
@@ -590,7 +652,6 @@
             const svgNS = "http://www.w3.org/2000/svg";
             const svg = document.createElementNS(svgNS, "svg");
 
-            // Calculate required radius for positioning elements (table + person circle + text offset)
             const outerRadius = TABLE_RADIUS + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET + PERSON_FONT_SIZE; // Approximate outer boundary
             const svgHeight = TOP_PADDING + (outerRadius * 2) + TOP_PADDING;
             svg.setAttribute("height", svgHeight);
@@ -598,9 +659,16 @@
 
             let currentXOffset = TABLE_PADDING + outerRadius; // Start X for the center of the first table's outer bounds
 
-            tables.forEach((table, tableIndex) => {
+            tables.forEach((table, tableIndex) => { // table is now Person[] (ordered)
                 const numPeople = table.length;
-                if (numPeople === 0) return;
+                if (numPeople === 0) return; // Skip empty tables if they somehow occur
+
+                // Validate table data
+                if (!Array.isArray(table) || !table.every(p => p && p.name)) {
+                    console.error(`[DEBUG] displayTables: Invalid table data received for table index ${tableIndex}:`, table);
+                    return; // Skip rendering this invalid table
+                }
+
 
                 const tableCenterX = currentXOffset;
                 const tableCenterY = TOP_PADDING + outerRadius; // Center based on the overall element height
@@ -619,12 +687,14 @@
                 tableGroup.appendChild(tableCircle);
 
                 // --- Place People around the Table ---
-                table.sort(); // Keep consistent placement
+                // REMOVED: table.sort(); - Input 'table' is now assumed to be ordered Person objects
 
                 const angleStep = (2 * Math.PI) / numPeople;
 
-                table.forEach((personName, personIndex) => {
+                table.forEach((person, personIndex) => { // Iterate through the ordered Person objects
+                    const personName = person.name; // Get name from person object
                     // Calculate angle: Start at top (-PI/2) and go clockwise
+                    // Use personIndex (0, 1, 2...) from the forEach loop for ordering
                     const angle = -Math.PI / 2 + personIndex * angleStep;
                     const cosAngle = Math.cos(angle);
                     const sinAngle = Math.sin(angle);
@@ -639,9 +709,6 @@
                     personCircle.setAttribute("cy", personY);
                     personCircle.setAttribute("r", PERSON_CIRCLE_RADIUS);
                     personCircle.setAttribute("fill", PERSON_FILL_COLOR);
-                    // Optional: Add a subtle stroke to person circles
-                    // personCircle.setAttribute("stroke", "#fff");
-                    // personCircle.setAttribute("stroke-width", "1");
                     tableGroup.appendChild(personCircle);
 
                     // 2. Calculate Text Position (outside the person circle)
@@ -666,7 +733,7 @@
                     text.setAttribute("font-size", `${PERSON_FONT_SIZE}px`);
                     text.setAttribute("font-family", "sans-serif"); // Specify a common font
                     text.setAttribute("fill", TEXT_COLOR);
-                    text.textContent = personName;
+                    text.textContent = personName; // Use the name from the Person object
 
                     tableGroup.appendChild(text);
                 });
