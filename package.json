@@ -1,0 +1,11 @@
+{
+  "name": "tabletetris",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "",
+  "dependencies": {
+    "@bygdle/javascript-lp-solver": "^0.4.26",
+    "glpk.js": "^4.0.2",
+    "typescript": "^5.8.3"
+  }
+}
