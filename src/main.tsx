@@ -38,7 +38,7 @@ interface Person {
 
 type PreferencesState = Record<string, boolean>; // Key: pref_want/dislike_A_B
 type SolverStatus = 'idle' | 'loading' | 'error' | 'success';
-type TabId = 'people' | 'preferences' | 'results';
+type TabId = 'people' | 'preferences' | 'table';
 
 interface TabDefinition {
     id: TabId;
@@ -49,7 +49,7 @@ interface TabDefinition {
 const TABS: TabDefinition[] = [
     { id: 'people', label: 'People', icon: PeopleIcon },
     { id: 'preferences', label: 'Preferences', icon: PreferencesIcon },
-    { id: 'results', label: 'Table', icon: TableIcon },
+    { id: 'table', label: 'Table', icon: TableIcon },
 ];
 
 // Result type: Array of person objects representing the seating arrangement
@@ -282,7 +282,18 @@ function App() {
 
         // Determine the starting tab based on the URL hash
         const hash = window.location.hash;
-        const initialTab = getTabFromHash(hash);
+        let initialTab = getTabFromHash(hash); // Use let instead of const
+
+        // --- Add check for disabled tabs on initial load ---
+        if ((initialTab === 'preferences' || initialTab === 'table') && loadedPeople.length === 0) {
+            console.log(`[DEBUG] Initial hash '${hash}' points to a disabled tab (${initialTab}) with no people. Redirecting to 'people'.`);
+            initialTab = 'people';
+            // Optionally, update the hash in the URL bar to reflect the change
+            // Be careful with history updates if not desired
+            window.location.hash = 'people';
+        }
+        // --- End check ---
+
         setActiveTab(initialTab);
 
     }, []); // Empty dependency array means run only once on mount
@@ -367,6 +378,22 @@ function App() {
     useEffect(() => {
         const handleHashChange = () => {
             const newTab = getTabFromHash(window.location.hash);
+
+            // --- Add guard against navigating to disabled tabs via URL --- 
+            if ((newTab === 'preferences' || newTab === 'table') && people.length === 0) {
+                console.log(`[DEBUG] Hash change to '${newTab}' blocked because people list is empty. Redirecting to 'people'.`);
+                // Force hash back to people if trying to access disabled tabs directly
+                if (window.location.hash !== '#people') { // Avoid infinite loop if already #people
+                    window.location.hash = 'people';
+                }
+                // If the *current* active tab is already people, we don't need to trigger a state update
+                // If the *current* active tab is NOT people, the hash change above will trigger this handler again,
+                // and it will correctly set the state to 'people' on the next run.
+                return; // Stop processing this hash change event
+            }
+            // --- End guard ---
+
+            // Original logic: Only update state if the (now validated) tab is different
             if (newTab !== activeTab) {
                 console.log(`[DEBUG] Hash changed, switching tab to: ${newTab}`);
                 setActiveTab(newTab);
@@ -374,13 +401,11 @@ function App() {
         };
 
         window.addEventListener('hashchange', handleHashChange);
-        // Set initial tab based on hash
-        handleHashChange(); // Call once on load
 
         return () => {
             window.removeEventListener('hashchange', handleHashChange);
         };
-    }, [activeTab]); // Re-run if activeTab changes programmatically
+    }, [activeTab, people]); // Re-run if activeTab changes programmatically
 
     // --- Event Handlers ---
     const handleAddPerson = () => {
@@ -510,14 +535,28 @@ function App() {
                 flexShrink: 0
             }}>
                 {TABS.map(tab => {
+                    // Determine if the tab should be disabled
+                    const isDisabled = (tab.id === 'preferences' || tab.id === 'table') && people.length === 0;
+                    // Get base style and apply disabled modifications
+                    const baseStyle = getTabStyle(tab.id, activeTab);
+                    const finalStyle: React.CSSProperties = {
+                        ...baseStyle,
+                        cursor: isDisabled ? 'not-allowed' : 'pointer',
+                        opacity: isDisabled ? 0.5 : 1, // Example: Dim disabled tabs
+                    };
+
                     return (
                         <button
                             key={tab.id}
-                            style={getTabStyle(tab.id, activeTab)}
+                            style={finalStyle} // Apply potentially modified style
                             onClick={() => {
-                                setActiveTab(tab.id);
-                                window.location.hash = tab.id; // Update hash on click
+                                // Only allow click if not disabled
+                                if (!isDisabled) {
+                                    setActiveTab(tab.id);
+                                    window.location.hash = tab.id; // Update hash on click
+                                }
                             }}
+                            disabled={isDisabled} // Add disabled attribute for accessibility
                         >
                             <tab.icon width="18" height="18" /> {/* Render the icon */}
                             {tab.label}
@@ -747,7 +786,7 @@ function App() {
                     </div>
                 )}
 
-                {activeTab === 'results' && (
+                {activeTab === 'table' && (
                     <div style={{ height: '100%' }}>
                         {solverStatus === 'idle' && people.length === 0 && <p>Add people and set preferences first.</p>}
                         {solverStatus === 'idle' && people.length > 0 && <p>Preferences set, ready to calculate (or calculation pending).</p>}
