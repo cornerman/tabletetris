@@ -631,7 +631,7 @@ function App() {
                         </div>
 
                         {/* People List */}
-                        <div style={{ padding: '0 15px 60px 15px' }}>
+                        <div style={{ padding: '0 5px 0px 5px' }}>
                             {people.length === 0 ? (
                                 null
                             ) : (
