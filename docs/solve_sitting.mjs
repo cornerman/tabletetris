@@ -8,19 +8,31 @@
  *                            preference score of person i sitting next to person j.
  * @returns {Promise<number[][]>} A promise that resolves to a binary adjacency matrix
  *                       where matrix[i][j] = 1 if person i sits next to person j,
- *                       0 otherwise.
- * @throws {Error} If the solver fails, finds no feasible solution, or the
- *                 problem is unbounded.
+ *                       0 otherwise. Represents a single table arrangement.
+ * @throws {Error} If the solver fails, finds no feasible solution, the
+ *                 problem is unbounded, or n < 3 and specific handling fails.
  */
 export async function solveSitting(glpk, pref) {
     const EPSILON = 0.001; // Small incentive for pairing up
 
     const n = pref.length;
+
+    // Handle trivial cases explicitly
     if (n === 0) {
         return [];
     }
+    if (n === 1) {
+        return [[0]]; // One person sits alone
+    }
+    if (n === 2) {
+        // Two people must sit together
+        // Note: The LP formulation with equality constraints = 2 won't work here.
+        return [[0, 1], [1, 0]];
+    }
+    // For n >= 3, we proceed with the LP solver aiming for a cycle (degree 2 for all)
 
     console.assert(pref.every(row => row.length === n), "Preference matrix must be square.");
+    console.assert(n >= 3, "Solver logic assumes n >= 3 after initial checks."); // Add assertion
 
     // Helper to get variable name (e.g., "x_0_1")
     function getVarName(i, j) {
@@ -48,22 +60,24 @@ export async function solveSitting(glpk, pref) {
             )
         },
         subjectTo: [
-            // 1. Row Sum Constraints: sum(x_i_j for j != i) <= 2
+            // 1. Row Sum Constraints: sum(x_i_j for j != i) = 2 (Each person has exactly 2 neighbors)
             ...indices.map(i => ({
                 name: `RowSum_${i}`,
                 vars: indices
                     .filter(j => i !== j)
                     .map(j => ({ name: getVarName(i, j), coef: 1.0 })),
-                bnds: { type: glpk.GLP_UP, ub: 2.0, lb: 0.0 }
+                // Change to Fixed Bound (Equality Constraint)
+                bnds: { type: glpk.GLP_FX, ub: 2.0, lb: 2.0 }
             })),
 
-            // 2. Column Sum Constraints: sum(x_i_j for i != j) <= 2
+            // 2. Column Sum Constraints: sum(x_i_j for i != j) = 2 (Redundant due to symmetry, but good practice)
             ...indices.map(j => ({
                 name: `ColSum_${j}`,
                 vars: indices
                     .filter(i => i !== j)
                     .map(i => ({ name: getVarName(i, j), coef: 1.0 })),
-                bnds: { type: glpk.GLP_UP, ub: 2.0, lb: 0.0 }
+                // Change to Fixed Bound (Equality Constraint)
+                bnds: { type: glpk.GLP_FX, ub: 2.0, lb: 2.0 }
             })),
 
             // 3. Symmetry Constraints: x_i_j - x_j_i = 0 for i < j
@@ -106,8 +120,14 @@ export async function solveSitting(glpk, pref) {
 
     // Check if the solution is optimal or feasible
     if (result.result.status !== glpk.GLP_OPT && result.result.status !== glpk.GLP_FEAS) {
-        throw new Error(`Solver failed. Status: ${statusText} (${result.result.status})`);
+        // Provide more context in the error for n >= 3 scenarios
+        throw new Error(`Solver failed for n=${n}. Status: ${statusText} (${result.result.status}). Could not ensure exactly two neighbors per person.`);
     }
+    // If feasible but not optimal (might happen with certain objectives/constraints), log a warning.
+    if (result.result.status === glpk.GLP_FEAS) {
+        console.warn(`[WARN] Solver found a feasible but not optimal solution for n=${n}. Status: ${statusText}`);
+    }
+
 
     // --- Construct the Result Matrix ---
     const varMatrix = Array(n).fill(0).map(() => Array(n).fill(0)); // Initialize with 0s
@@ -125,30 +145,32 @@ export async function solveSitting(glpk, pref) {
             if (i >= 0 && i < n && j >= 0 && j < n) {
                 // Round the result, as GLPK might return values very close to 0 or 1
                 varMatrix[i][j] = Math.round(result.result.vars[varName]);
-                 // Assert that the value is indeed binary after rounding
+                // Assert that the value is indeed binary after rounding
                 console.assert(varMatrix[i][j] === 0 || varMatrix[i][j] === 1, `Non-binary value found for ${varName}: ${result.result.vars[varName]}`);
             } else {
                 // This case should ideally not happen if input is correct and parsing works
-                 console.warn(`[WARN] Parsed indices [${i}, ${j}] from ${varName} are out of bounds for size ${n}.`);
+                console.warn(`[WARN] Parsed indices [${i}, ${j}] from ${varName} are out of bounds for size ${n}.`);
             }
         }
     }
 
     // Add final assertions: Check symmetry and degree constraints on the result matrix
-    for(let i = 0; i < n; ++i) {
+    // Since we handled n=1, n=2 explicitly, these checks apply for n >= 3
+    for (let i = 0; i < n; ++i) {
         let rowSum = 0;
-        let colSum = 0;
+        // let colSum = 0; // Column sum check is redundant due to symmetry and row sum check
         for (let j = 0; j < n; ++j) {
             if (i !== j) {
                 console.assert(varMatrix[i][j] === varMatrix[j][i], `Symmetry broken: varMatrix[${i}][${j}] (${varMatrix[i][j]}) !== varMatrix[${j}][${i}] (${varMatrix[j][i]})`);
                 rowSum += varMatrix[i][j];
-                colSum += varMatrix[j][i]; // Use symmetry for colSum check here
+                // colSum += varMatrix[j][i]; // Use symmetry for colSum check here
             } else {
-                 console.assert(varMatrix[i][i] === 0, `Diagonal element varMatrix[${i}][${i}] is not 0`);
+                console.assert(varMatrix[i][i] === 0, `Diagonal element varMatrix[${i}][${i}] is not 0`);
             }
         }
-         console.assert(rowSum <= 2, `Person ${i} has degree ${rowSum} (max 2 allowed)`);
-         // Column sum check is implicitly covered by row sum and symmetry check
+        // For n >= 3, every person MUST have exactly 2 neighbors
+        console.assert(rowSum === 2, `Person ${i} has degree ${rowSum} (expected 2 for n=${n})`);
+        // Column sum check is implicitly covered by row sum and symmetry check
     }
 
 
