@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import GLPK from 'glpk.js';
+import { FaHeart, FaSkullCrossbones } from 'react-icons/fa';
 import { solveSitting } from './solve_sitting';
 import { GLPKInstance } from './glpk_facade';
 import { extractTableCycle } from './matrix_to_table';
+import './index.css'; // <-- Import global CSS
 
 // --- Constants ---
 const DEBOUNCE_DELAY = 500; // ms
@@ -12,7 +14,7 @@ const STORAGE_KEY_PREFS = 'tabletetris_prefs';
 const PREFERENCE_VALUE_WANT = 1;
 const PREFERENCE_VALUE_DISLIKE = -1;
 
-// --- SVG Constants ---
+// --- SVG Constants (moved to component later if needed) ---
 const TABLE_RADIUS = 80;         // px
 const TABLE_PADDING = 50;        // px
 const PERSON_FONT_SIZE = 12;     // px
@@ -32,12 +34,14 @@ interface Person {
 
 type PreferencesState = Record<string, boolean>; // Key: pref_want/dislike_A_B
 type SolverStatus = 'idle' | 'loading' | 'error' | 'success';
+type ActiveTab = 'people' | 'preferences' | 'results'; // <-- New Type
 
 // Result type: Array of person objects representing the seating arrangement
 type SeatingResult = Person[] | null;
 
 // --- Main App Component ---
 function App() {
+    // Existing State
     const [personNameInput, setPersonNameInput] = useState<string>('');
     const [people, setPeople] = useState<Person[]>([]);
     const [nextPersonId, setNextPersonId] = useState<number>(0);
@@ -49,6 +53,12 @@ function App() {
     const [seatingResult, setSeatingResult] = useState<SeatingResult>(null);
     const glpkInstance = useRef<GLPKInstance | null>(null);
     const solveTimeoutId = useRef<NodeJS.Timeout | null>(null);
+
+    // --- New State ---
+    const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
+    const [activeTab, setActiveTab] = useState<ActiveTab>('people');
+    // State for Preferences Tab (will be used later)
+    const [editingPrefsForPersonId, setEditingPrefsForPersonId] = useState<number | null>(null);
 
     // --- GLPK Initialization ---
     const initializeGlpk = async () => {
@@ -157,43 +167,90 @@ function App() {
         let loadedPrefs: PreferencesState = {};
 
         try {
+            // --- Load People ---
             const storedPeople = localStorage.getItem(STORAGE_KEY_PEOPLE);
-            if (storedPeople) {
+            if (storedPeople) { // Check if not null/undefined
                 try {
                     const parsedPeople = JSON.parse(storedPeople);
-                    if (Array.isArray(parsedPeople)) { // Basic validation
-                        // TODO: Deeper validation of Person structure?
+                    // **Enhanced Validation**
+                    if (
+                        Array.isArray(parsedPeople) &&
+                        parsedPeople.every(p =>
+                            typeof p === 'object' &&
+                            p !== null &&
+                            typeof p.id === 'number' &&
+                            typeof p.name === 'string'
+                        )
+                    ) {
                         loadedPeople = parsedPeople;
                     } else {
-                        console.warn("Stored people data is not an array, resetting.");
+                        console.warn("Stored people data is invalid or malformed, resetting.");
+                        localStorage.removeItem(STORAGE_KEY_PEOPLE); // Clear invalid data
                     }
                 } catch (parseError) {
                     console.error("Failed to parse stored people, resetting.", parseError);
+                    localStorage.removeItem(STORAGE_KEY_PEOPLE); // Clear corrupted data
                 }
             }
 
+            // --- Load Preferences ---
             const storedPrefs = localStorage.getItem(STORAGE_KEY_PREFS);
-            if (storedPrefs) {
+            if (storedPrefs) { // Check if not null/undefined
                 try {
                     const parsedPrefs = JSON.parse(storedPrefs);
-                    if (typeof parsedPrefs === 'object' && parsedPrefs !== null) {
-                        // TODO: Deeper validation of prefs structure/keys?
-                        loadedPrefs = parsedPrefs;
+                    // **Enhanced Validation**
+                    if (typeof parsedPrefs === 'object' && parsedPrefs !== null && !Array.isArray(parsedPrefs)) {
+                        let validPrefs: PreferencesState = {};
+                        let isValid = true;
+                        for (const key in parsedPrefs) {
+                            if (Object.prototype.hasOwnProperty.call(parsedPrefs, key)) {
+                                // Validate key format (basic) and value type
+                                const parts = key.split('_');
+                                if (
+                                    parts.length === 4 &&
+                                    parts[0] === 'pref' &&
+                                    (parts[1] === 'want' || parts[1] === 'dislike') &&
+                                    !isNaN(parseInt(parts[2], 10)) && // Check if IDs are numbers
+                                    !isNaN(parseInt(parts[3], 10)) &&
+                                    typeof parsedPrefs[key] === 'boolean'
+                                ) {
+                                    validPrefs[key] = parsedPrefs[key];
+                                } else {
+                                    console.warn(`Invalid preference key/value found: ${key}=${parsedPrefs[key]}, skipping.`);
+                                    isValid = false; // Mark as invalid if any entry is bad
+                                }
+                            }
+                        }
+                        if (isValid) {
+                            loadedPrefs = validPrefs;
+                        } else {
+                            console.warn("Stored preferences contain invalid entries, resetting all preferences.");
+                            localStorage.removeItem(STORAGE_KEY_PREFS); // Clear data with invalid entries
+                        }
                     } else {
-                        console.warn("Stored preferences data is not an object, resetting.");
+                        console.warn("Stored preferences data is not a valid object, resetting.");
+                        localStorage.removeItem(STORAGE_KEY_PREFS); // Clear invalid data
                     }
                 } catch (parseError) {
                     console.error("Failed to parse stored preferences, resetting.", parseError);
+                    localStorage.removeItem(STORAGE_KEY_PREFS); // Clear corrupted data
                 }
             }
 
         } catch (e) {
             console.error("Error accessing localStorage during load:", e);
-            // Clear potentially corrupted storage if access fails
-            localStorage.removeItem(STORAGE_KEY_PEOPLE);
-            localStorage.removeItem(STORAGE_KEY_PREFS);
+            // Attempt to clear potentially problematic storage if access fails
+            // This might fail if localStorage access is completely blocked (e.g., private mode)
+            try {
+                localStorage.removeItem(STORAGE_KEY_PEOPLE);
+                localStorage.removeItem(STORAGE_KEY_PREFS);
+                console.warn("Attempted to clear localStorage due to access error.");
+            } catch (clearError) {
+                console.error("Failed to clear localStorage after access error:", clearError);
+            }
         }
 
+        // Update state with loaded (and validated) data
         setPeople(loadedPeople);
         const maxId = loadedPeople.reduce((max: number, p: Person) => Math.max(max, p.id), -1);
         setNextPersonId(maxId + 1);
@@ -202,13 +259,28 @@ function App() {
         console.log("[DEBUG] Loaded people:", loadedPeople, "Next ID:", maxId + 1);
         console.log("[DEBUG] Loaded preferences:", loadedPrefs);
 
-        // TODO: Trigger initial solve if needed (depends on solver integration)
+        // Signal that initial loading and state setting is done
+        console.log("[DEBUG] Setting isInitialLoadComplete to true.");
+        setIsInitialLoadComplete(true);
+
+        // Determine the starting tab based on the URL hash
+        const hash = window.location.hash;
+        const initialTab = getTabFromHash(hash);
+        setActiveTab(initialTab);
 
     }, []); // Empty dependency array means run only once on mount
 
     // Save state to localStorage whenever people or preferences change
     useEffect(() => {
-        console.log("[DEBUG] useEffect: Saving state to localStorage...");
+        console.log("[DEBUG] useEffect: Checking if should save state to localStorage...");
+
+        // --- Prevent saving during initial load sequence ---
+        if (!isInitialLoadComplete) {
+            console.log("[DEBUG] Initial load not complete, skipping save.");
+            return;
+        }
+
+        console.log("[DEBUG] Initial load complete, proceeding with save.");
         try {
             localStorage.setItem(STORAGE_KEY_PEOPLE, JSON.stringify(people));
             localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(preferences));
@@ -216,7 +288,7 @@ function App() {
         } catch (e) {
             console.error("Failed to save state to localStorage:", e);
         }
-    }, [people, preferences]); // Rerun effect if people or preferences change
+    }, [people, preferences, isInitialLoadComplete]);
 
     // Debounced Solver Trigger Effect
     useEffect(() => {
@@ -249,6 +321,31 @@ function App() {
         // conditions with the main solver effect.
     }, [people, solverStatus]);
 
+    // Effect to reset/set initial preferences editor person when tab changes or people change
+    useEffect(() => {
+        console.log("[DEBUG] useEffect: Updating editingPrefsForPersonId due to tab/people change.");
+        if (activeTab === 'preferences') {
+            if (people.length > 0) {
+                // If current ID is invalid or null, set to the first person
+                const currentPersonExists = people.some(p => p.id === editingPrefsForPersonId);
+                if (!currentPersonExists) {
+                    const firstPersonId = people[0].id;
+                    console.log(`[DEBUG] Setting editingPrefsForPersonId to first person: ${firstPersonId}`);
+                    setEditingPrefsForPersonId(firstPersonId);
+                } else {
+                    console.log(`[DEBUG] Keeping existing editingPrefsForPersonId: ${editingPrefsForPersonId}`);
+                }
+            } else {
+                // No people, clear the editing ID
+                if (editingPrefsForPersonId !== null) {
+                    console.log("[DEBUG] No people, clearing editingPrefsForPersonId.");
+                    setEditingPrefsForPersonId(null);
+                }
+            }
+        }
+        // No need for else, only care when preferences tab is active
+    }, [activeTab, people, editingPrefsForPersonId]); // Re-run if tab changes, people list changes, or the ID itself changes
+
     // --- Event Handlers ---
     const handleAddPerson = () => {
         const name = personNameInput.trim();
@@ -272,41 +369,34 @@ function App() {
         // TODO: Trigger solver update? Might want debounce here.
     };
 
-    const handlePreferenceChange = (personAId: number, personBId: number, prefType: 'want' | 'dislike', isChecked: boolean) => {
+    const handlePreferenceChange = (personAId: number, personBId: number, prefType: 'want' | 'dislike' | 'neutral', isChecked?: boolean /* isChecked is now less relevant for icons */) => {
         const wantKey = `pref_want_${personAId}_${personBId}`;
         const dislikeKey = `pref_dislike_${personAId}_${personBId}`;
 
-        console.log(`[DEBUG] Pref change: ${prefType} ${personAId}->${personBId} set to ${isChecked}`);
+        console.log(`[DEBUG] Pref change: ${prefType} ${personAId}->${personBId}`);
 
         // Create a mutable copy of the current preferences state
         const newPreferences = { ...preferences };
 
-        // Set the value for the changed checkbox
+        // Set the values based on the clicked icon (prefType)
         if (prefType === 'want') {
-            newPreferences[wantKey] = isChecked;
-        } else { // dislike
-            newPreferences[dislikeKey] = isChecked;
-        }
-
-        // If a box was CHECKED, ensure its sibling is UNCHECKED
-        if (isChecked) {
-            if (prefType === 'want') {
-                if (newPreferences[dislikeKey]) {
-                    console.log(`[DEBUG] Unchecking sibling preference: ${dislikeKey}`);
-                    newPreferences[dislikeKey] = false;
-                }
-            } else { // dislike was checked
-                if (newPreferences[wantKey]) {
-                    console.log(`[DEBUG] Unchecking sibling preference: ${wantKey}`);
-                    newPreferences[wantKey] = false;
-                }
-            }
+            newPreferences[wantKey] = true;
+            newPreferences[dislikeKey] = false;
+            console.log(`[DEBUG] Setting ${wantKey}=true, ${dislikeKey}=false`);
+        } else if (prefType === 'dislike') {
+            newPreferences[wantKey] = false;
+            newPreferences[dislikeKey] = true;
+            console.log(`[DEBUG] Setting ${wantKey}=false, ${dislikeKey}=true`);
+        } else { // neutral
+            newPreferences[wantKey] = false;
+            newPreferences[dislikeKey] = false;
+            console.log(`[DEBUG] Setting ${wantKey}=false, ${dislikeKey}=false`);
         }
 
         // Update the state immutably
         setPreferences(newPreferences);
 
-        // TODO: Trigger solver update (debounced)
+        // TODO: Trigger solver update (debounced) - This is already handled by the useEffect dependency
     };
 
     const handleRemovePerson = (personIdToRemove: number) => {
@@ -333,6 +423,14 @@ function App() {
         }
         setPreferences(updatedPreferences);
 
+        // If the removed person was the one being edited for prefs, reset it
+        if (editingPrefsForPersonId === personIdToRemove) {
+            console.log("[DEBUG] Removed person was being edited for preferences, resetting selection.");
+            // If there are still people left, set to the first one, otherwise null
+            const remainingPeople = updatedPeople; // Use the already filtered list
+            setEditingPrefsForPersonId(remainingPeople.length > 0 ? remainingPeople[0].id : null);
+        }
+
         // TODO: Trigger solver update (debounced)
     };
 
@@ -350,114 +448,329 @@ function App() {
         setSolverStatus('idle'); // Reset solver state as well
         setSeatingResult(null);
         setSolverError(null);
+        setEditingPrefsForPersonId(null); // Clear preference editing state too
     };
 
     // --- Render ---
-    return (
-        <div>
-            <h1>Table Sitting Solver</h1>
 
-            {/* Input Section */}
-            <div>
-                <label htmlFor="personName">Person Name:</label>
-                <input
-                    type="text"
-                    id="personName"
-                    name="personName"
-                    value={personNameInput}
-                    onChange={(e) => setPersonNameInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { handleAddPerson(); e.preventDefault(); } }} // Add person on Enter key
-                />
-                <button type="button" onClick={handleAddPerson}>Add Person</button>
-                <button type="button" style={{ marginLeft: '10px' }} onClick={handleClearAll}>Clear All</button> {/* Use handler */}
+    // Helper to get the currently selected person for preference editing
+    const personBeingEdited = people.find(p => p.id === editingPrefsForPersonId);
+
+    return (
+        <div style={{ fontFamily: 'sans-serif' }}>
+            <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>Table Sitting Solver</h1>
+
+            {/* Tab Navigation */}
+            <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid #ccc' }}>
+                <button
+                    type="button"
+                    onClick={() => { setActiveTab('people'); window.location.hash = '#people'; }}
+                    style={getTabStyle('people', activeTab)}
+                >
+                    People ({people.length})
+                </button>
+                <button
+                    type="button"
+                    onClick={() => { setActiveTab('preferences'); window.location.hash = '#preferences'; }}
+                    style={getTabStyle('preferences', activeTab)}
+                    disabled={people.length < 2} // Disable if fewer than 2 people
+                >
+                    Preferences
+                </button>
+                <button
+                    type="button"
+                    onClick={() => { setActiveTab('results'); window.location.hash = '#results'; }}
+                    style={getTabStyle('results', activeTab)}
+                    disabled={people.length === 0} // <-- Disable if no people
+                >
+                    Table
+                </button>
             </div>
 
-            <hr />
-
-            {/* People & Preferences Section */}
+            {/* Tab Content */}
             <div>
-                <h2>People & Preferences</h2>
-                {people.length === 0 ? (
-                    <p>Add some people to define preferences.</p>
-                ) : (
-                    people.map((person) => (
-                        <div key={person.id} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                <h3>{person.name} (ID: {person.id})</h3>
+                {/* People Tab */}
+                {activeTab === 'people' && (
+                    <div>
+                        {/* Input Section */}
+                        <div style={{ padding: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <input
+                                type="text"
+                                id="personName"
+                                name="personName"
+                                value={personNameInput}
+                                onChange={(e) => setPersonNameInput(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { handleAddPerson(); e.preventDefault(); } }}
+                                style={{ padding: '8px', flexGrow: 1, minWidth: '150px' }}
+                                placeholder="Add person name..."
+                            />
+                            <button type="button" onClick={handleAddPerson} style={getButtonStyle()}>Add Person</button>
+                        </div>
+
+                        {/* People List */}
+                        <div style={{ padding: '0 15px 60px 15px' }}>
+                            {people.length === 0 ? (
+                                null
+                            ) : (
+                                <ul style={{ listStyle: 'none', padding: 0 }}>
+                                    {people.map((person) => (
+                                        <li key={person.id} style={{ border: '1px solid #eee', padding: '10px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span>{person.name}</span>
+                                            <button
+                                                type="button"
+                                                style={getSmallButtonStyle()}
+                                                onClick={() => handleRemovePerson(person.id)}
+                                            >
+                                                Remove
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            {/* Clear All Button - End of List */}
+                            {people.length > 0 && ( // Only show if there are people to clear
+                                <div style={{ textAlign: 'right', padding: '15px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={handleClearAll}
+                                        style={getButtonStyle('secondary')}
+                                    >
+                                        Clear All
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Preferences Tab */}
+                {activeTab === 'preferences' && (
+                    <div>
+                        {/* Person Selector Buttons */}
+                        <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '5px', borderBottom: '1px solid #eee', marginBottom: '15px' }}>
+                            {people.map(p => (
                                 <button
+                                    key={p.id}
                                     type="button"
-                                    style={{ padding: '2px 5px', fontSize: '0.8em', cursor: 'pointer' }}
-                                    onClick={() => handleRemovePerson(person.id)} // Use handler
+                                    onClick={() => setEditingPrefsForPersonId(p.id)}
+                                    style={getPersonButtonStyle(p.id, editingPrefsForPersonId)}
                                 >
-                                    Remove
+                                    {p.name}
                                 </button>
-                            </div>
+                            ))}
+                        </div>
+
+                        {/* Preferences for selected person */}
+                        {personBeingEdited ? (
                             <div>
-                                <strong>Preferences towards:</strong>
                                 {people
-                                    .filter((otherPerson) => otherPerson.id !== person.id)
+                                    .filter((otherPerson) => otherPerson.id !== personBeingEdited.id)
                                     .map((otherPerson) => {
-                                        const wantKey = `pref_want_${person.id}_${otherPerson.id}`;
-                                        const dislikeKey = `pref_dislike_${person.id}_${otherPerson.id}`;
-                                        const wantId = `cb_want_${person.id}_${otherPerson.id}`;
-                                        const dislikeId = `cb_dislike_${person.id}_${otherPerson.id}`;
+                                        const wantKey = `pref_want_${personBeingEdited.id}_${otherPerson.id}`;
+                                        const dislikeKey = `pref_dislike_${personBeingEdited.id}_${otherPerson.id}`;
                                         const isWantChecked = preferences[wantKey] || false;
                                         const isDislikeChecked = preferences[dislikeKey] || false;
+                                        const isNeutral = !isWantChecked && !isDislikeChecked;
+
+                                        // Determine background color based on state
+                                        let rowStyle: React.CSSProperties = {
+                                            border: '1px solid #eee',
+                                            padding: '10px 15px', // Adjusted padding
+                                            marginBottom: '10px',
+                                            display: 'flex', // Use flexbox for layout
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            borderRadius: '4px', // Rounded corners
+                                            transition: 'background-color 0.2s ease-in-out', // Smooth transition
+                                        };
+                                        if (isWantChecked) {
+                                            rowStyle.backgroundColor = '#e6ffed'; // Light green
+                                            rowStyle.borderColor = '#b7ebc2';
+                                        } else if (isDislikeChecked) {
+                                            rowStyle.backgroundColor = '#ffebee'; // Light red
+                                            rowStyle.borderColor = '#ffcdd2';
+                                        } else {
+                                            rowStyle.backgroundColor = '#ffffff'; // Default white/transparent
+                                        }
+
+                                        // Style for icons (will be passive indicators now)
+                                        const iconBaseStyle: React.CSSProperties = {
+                                            // Removed cursor: pointer
+                                            fontSize: '1.5em',
+                                            margin: '0 8px', // Keep margin for spacing
+                                            color: '#aaa',    // Dim color as they are passive
+                                            verticalAlign: 'middle', // Align with switch
+                                        };
+                                        // No activeIconStyle needed for these icons anymore
+
+                                        // --- Switch Styles ---
+                                        const switchWidth = 60; // px
+                                        const switchHeight = 20; // px
+                                        const knobSize = 16;     // px (slightly smaller than height)
+                                        const knobPadding = (switchHeight - knobSize) / 2; // Center knob vertically
+
+                                        const switchTrackStyle: React.CSSProperties = {
+                                            display: 'inline-block',
+                                            position: 'relative', // For knob positioning
+                                            width: `${switchWidth}px`,
+                                            height: `${switchHeight}px`,
+                                            backgroundColor: '#e0e0e0',
+                                            borderRadius: `${switchHeight / 2}px`, // Pill shape
+                                            cursor: 'pointer',
+                                            verticalAlign: 'middle', // Align with icons
+                                        };
+
+                                        const getKnobPosition = (): React.CSSProperties => {
+                                            let left = knobPadding; // Default to neutral (middle)
+                                            if (isWantChecked) {
+                                                left = knobPadding; // Position for Want (Left)
+                                            } else if (isDislikeChecked) {
+                                                left = switchWidth - knobSize - knobPadding; // Position for Dislike (Right)
+                                            } else { // Neutral
+                                                left = (switchWidth - knobSize) / 2; // Position for Neutral (Center)
+                                            }
+                                            return {
+                                                position: 'absolute',
+                                                top: `${knobPadding}px`,
+                                                left: `${left}px`,
+                                                width: `${knobSize}px`,
+                                                height: `${knobSize}px`,
+                                                backgroundColor: isWantChecked ? '#4CAF50' : isDislikeChecked ? '#f44336' : '#9e9e9e', // Color reflects state
+                                                borderRadius: '50%', // Circular knob
+                                                transition: 'left 0.2s ease-in-out, background-color 0.2s ease-in-out',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                            };
+                                        };
+                                        // --- End Switch Styles ---
+
+                                        // Click handler for the switch track
+                                        const handleSwitchClick = (event: React.MouseEvent<HTMLDivElement>) => {
+                                            const trackRect = event.currentTarget.getBoundingClientRect();
+                                            const clickX = event.clientX - trackRect.left;
+                                            const thirdWidth = switchWidth / 3;
+
+                                            let newState: 'want' | 'neutral' | 'dislike';
+                                            if (clickX < thirdWidth) {
+                                                newState = 'want';
+                                            } else if (clickX > switchWidth - thirdWidth) {
+                                                newState = 'dislike';
+                                            } else {
+                                                newState = 'neutral';
+                                            }
+                                            handlePreferenceChange(personBeingEdited.id, otherPerson.id, newState);
+                                        };
 
                                         return (
-                                            <div key={otherPerson.id} style={{ marginLeft: '20px', marginBottom: '5px' }}>
-                                                <span style={{ display: 'inline-block', minWidth: '100px' }}>
-                                                    {otherPerson.name} (ID: {otherPerson.id}):
+                                            <div key={otherPerson.id} style={rowStyle}>
+                                                {/* Simplified text */}
+                                                <span style={{ marginRight: 'auto', fontWeight: 'bold' /* Push icons to the right */ }}>
+                                                    {otherPerson.name}
                                                 </span>
-                                                <span style={{ display: 'inline-block', marginLeft: '15px' }}>
-                                                    <label htmlFor={wantId} style={{ marginRight: '5px', fontSize: '0.9em' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            id={wantId}
-                                                            checked={isWantChecked}
-                                                            onChange={(e) => handlePreferenceChange(person.id, otherPerson.id, 'want', e.target.checked)}
-                                                        /> Want
-                                                    </label>
-                                                    <label htmlFor={dislikeId} style={{ fontSize: '0.9em' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            id={dislikeId}
-                                                            checked={isDislikeChecked}
-                                                            onChange={(e) => handlePreferenceChange(person.id, otherPerson.id, 'dislike', e.target.checked)}
-                                                        /> Don't Want
-                                                    </label>
-                                                </span>
+                                                {/* Preference Control Area */}
+                                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                    {/* Heart Icon (Passive Indicator) */}
+                                                    <FaHeart
+                                                        style={{ ...iconBaseStyle, color: isWantChecked ? '#4CAF50' : iconBaseStyle.color }}
+                                                        title={`Want to sit next to ${otherPerson.name}`}
+                                                    // No onClick
+                                                    />
+
+                                                    {/* The Switch */}
+                                                    <div
+                                                        style={switchTrackStyle}
+                                                        onClick={handleSwitchClick}
+                                                        title={`Set preference for ${otherPerson.name} (Left: Want, Middle: Neutral, Right: Don't Want)`}
+                                                    >
+                                                        <div style={getKnobPosition()}></div> {/* The moving knob */}
+                                                    </div>
+
+                                                    {/* Skull Icon (Passive Indicator) */}
+                                                    <FaSkullCrossbones
+                                                        style={{ ...iconBaseStyle, color: isDislikeChecked ? '#f44336' : iconBaseStyle.color }}
+                                                        title={`Do NOT want to sit next to ${otherPerson.name}`}
+                                                    // No onClick
+                                                    />
+                                                </div>
                                             </div>
                                         );
                                     })}
-                                {people.length === 1 && <em style={{ marginLeft: '20px' }}>(Add more people to set preferences)</em>}
                             </div>
-                        </div>
-                    ))
+                        ) : (
+                            <p>Select a person above to edit their preferences.</p>
+                        )}
+                    </div>
                 )}
-            </div>
 
-            <hr />
-
-            {/* Results Section */}
-            <div>
-                <h2>Results</h2>
-                {/* TODO: Render results (loading, error, success/table) */}
-                {solverStatus === 'idle' && <p>Add people and preferences to see results.</p>}
-                {solverStatus === 'loading' && <p><i>Calculating...</i></p>}
-                {solverStatus === 'error' && <p style={{ color: 'red' }}>Error: {solverError || 'Unknown error during solving'}</p>}
-                {solverStatus === 'success' && (
-                    seatingResult ?
-                        <div>
-                            {/* Use the TableVisualization component */}
-                            <TableVisualization table={seatingResult} />
-                        </div>
-                        : <p style={{ color: 'orange' }}>Could not determine a seating arrangement.</p>
+                {/* Results Tab */}
+                {activeTab === 'results' && (
+                    <div>
+                        {solverStatus === 'idle' && people.length === 0 && <p>Add people and set preferences first.</p>}
+                        {solverStatus === 'idle' && people.length > 0 && <p>Preferences set, ready to calculate (or calculation pending).</p>}
+                        {solverStatus === 'loading' && <p style={{ fontStyle: 'italic' }}>Calculating optimal seating...</p>}
+                        {solverStatus === 'error' && <p style={{ color: 'red' }}>Error: {solverError || 'Unknown error during solving'}</p>}
+                        {solverStatus === 'success' && (
+                            seatingResult ? (
+                                <div style={{ textAlign: 'center' }}>
+                                    <p style={{ color: 'green' }}>Optimal seating arrangement found:</p>
+                                    <TableVisualization table={seatingResult} />
+                                </div>
+                            ) : (
+                                <p style={{ color: 'orange' }}>Could not determine a seating arrangement based on preferences. Everyone might dislike everyone else, or there might be conflicting strong dislikes.</p>
+                            )
+                        )}
+                    </div>
                 )}
             </div>
         </div>
     );
 }
+
+// --- Helper Functions for Styling ---
+
+const getTabStyle = (tabName: ActiveTab, activeTab: ActiveTab): React.CSSProperties => ({
+    padding: '10px 15px',
+    cursor: 'pointer',
+    border: 'none',
+    borderBottom: activeTab === tabName ? '3px solid #5b9bd5' : '3px solid transparent',
+    marginBottom: '-1px', // Overlap the container's bottom border
+    background: activeTab === tabName ? '#f0f0f0' : 'none',
+    fontWeight: activeTab === tabName ? 'bold' : 'normal',
+    fontSize: '1em',
+    flexGrow: 1,
+    textAlign: 'center',
+});
+
+const getButtonStyle = (type: 'primary' | 'secondary' = 'primary'): React.CSSProperties => ({
+    padding: '8px 15px',
+    cursor: 'pointer',
+    border: `1px solid ${type === 'primary' ? '#5b9bd5' : '#ccc'}`,
+    backgroundColor: type === 'primary' ? '#5b9bd5' : '#f0f0f0',
+    color: type === 'primary' ? 'white' : '#333',
+    borderRadius: '4px',
+    fontSize: '1em',
+});
+
+const getPersonButtonStyle = (personId: number, selectedPersonId: number | null): React.CSSProperties => ({
+    padding: '8px 12px',
+    marginRight: '8px',
+    cursor: 'pointer',
+    border: `1px solid ${personId === selectedPersonId ? '#5b9bd5' : '#ccc'}`,
+    backgroundColor: personId === selectedPersonId ? '#5b9bd5' : '#f0f0f0',
+    color: personId === selectedPersonId ? 'white' : '#333',
+    borderRadius: '4px',
+    fontSize: '0.9em',
+    whiteSpace: 'nowrap', // Prevent button text wrapping
+});
+
+const getSmallButtonStyle = (): React.CSSProperties => ({
+    padding: '3px 8px',
+    fontSize: '0.8em',
+    cursor: 'pointer',
+    border: '1px solid #ccc',
+    backgroundColor: '#f8f8f8',
+    color: '#555',
+    borderRadius: '3px',
+});
 
 // --- Table Visualization Component ---
 interface TableVisualizationProps {
@@ -547,6 +860,16 @@ function TableVisualization({ table }: TableVisualizationProps) {
         </svg>
     );
 }
+
+// Function to safely parse the hash
+const getTabFromHash = (hash: string): ActiveTab => {
+    const validTabs: ActiveTab[] = ['people', 'preferences', 'results'];
+    const tabName = hash.substring(1); // Remove '#'
+    if ((validTabs as string[]).includes(tabName)) {
+        return tabName as ActiveTab;
+    }
+    return 'people'; // Default
+};
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
