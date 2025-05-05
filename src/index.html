@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Table Sitting Solver</title>
+    <style>
+        /* Add some basic styling */
+        .person-section {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .preference-list>div {
+            /* Style each neighbor line */
+            margin-left: 20px;
+            margin-bottom: 5px;
+        }
+
+        .preference-list label {
+            /* Make labels inline */
+            /* display: block; */
+            /* margin-left: 20px; */
+            margin-right: 5px;
+            /* Space after checkbox */
+        }
+
+        .neighbor-name {
+            display: inline-block;
+            min-width: 100px;
+            /* Adjust as needed */
+        }
+
+        .pref-controls {
+            display: inline-block;
+            margin-left: 15px;
+        }
+
+        .pref-controls label {
+            font-size: 0.9em;
+        }
+
+        .pref-controls input[type="checkbox"] {
+            margin-right: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Table Sitting Solver</h1>
+
+    <h2>Define Preferences</h2>
+    <form>
+        <div>
+            <label for="personName">Person Name:</label>
+            <input type="text" id="personName" name="personName">
+            <button type="button" id="addPersonBtn">Add Person</button>
+            <button type="button" id="clearAllBtn" style="margin-left: 10px;">Clear All</button>
+        </div>
+
+        <div id="peopleContainer">
+            <!-- People and their preferences will be added here -->
+        </div>
+
+        <!-- REMOVED Solve Button -->
+        <!-- <button type="submit">Solve Sitting Arrangement</button> -->
+    </form>
+
+    <hr> <!-- Separator -->
+
+    <div id="resultsContainer">
+        <!-- Results will be displayed here -->
+        <p>Add people and select preferences to see the results.</p>
+    </div>
+
+    <!-- Vite entry point -->
+    <script type="module" src="/main.ts"></script>
+
+</body>
+
+</html>

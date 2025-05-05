@@ -1,5 +1,55 @@
 // Removed import GLPKFactory from 'glpk.js';
 
+// Define common types
+type AdjacencyMatrix = number[][];
+type PreferenceMatrix = number[][];
+// Basic GLPK type definition based on usage
+interface GLPKVar {
+    name: string;
+    coef: number;
+}
+interface GLPKBound {
+    type: number; // e.g., glpk.GLP_FX, glpk.GLP_UP
+    ub: number;
+    lb: number;
+}
+interface GLPKConstraint {
+    name: string;
+    vars: GLPKVar[];
+    bnds: GLPKBound;
+}
+interface GLPKObjective {
+    direction: number; // e.g., glpk.GLP_MAX
+    name: string;
+    vars: GLPKVar[];
+}
+interface GLPKProblem {
+    name: string;
+    objective: GLPKObjective;
+    subjectTo: GLPKConstraint[];
+    binaries?: string[]; // Optional based on usage
+}
+interface GLPKSolveResult {
+    result: {
+        status: number;
+        vars: Record<string, number>; // Variable names map to values
+        // ... other potential fields like z (objective value)
+    };
+}
+interface GLPKInstance {
+    GLP_MAX: number;
+    GLP_FX: number;
+    GLP_UP: number;
+    GLP_MSG_OFF: number;
+    GLP_UNDEF: number;
+    GLP_FEAS: number;
+    GLP_INFEAS: number;
+    GLP_NOFEAS: number;
+    GLP_OPT: number;
+    GLP_UNBND: number;
+    solve(problem: GLPKProblem, options?: any): Promise<GLPKSolveResult>;
+}
+
 /**
  * Finds disjoint cycles (subtours) in a graph represented by an adjacency matrix.
  * Assumes the graph is a collection of disjoint cycles (degree of each node is 2).
@@ -9,15 +59,15 @@
  * @returns {number[][]} An array of arrays, where each inner array contains the
  *                        node indices of a single cycle (subtour).
  */
-function findSubtours(adjMatrix) {
-    const n = adjMatrix.length;
+function findSubtours(adjMatrix: AdjacencyMatrix): number[][] {
+    const n: number = adjMatrix.length;
     if (n === 0) return [];
-    const visited = Array(n).fill(false);
-    const subtours = [];
+    const visited: boolean[] = Array(n).fill(false);
+    const subtours: number[][] = [];
 
     // Helper to find neighbors (exactly two for n >= 3 based on LP constraints)
-    function getNeighbors(node) {
-        const neighbors = [];
+    function getNeighbors(node: number): number[] { // Added type
+        const neighbors: number[] = [];
         for (let j = 0; j < n; j++) {
             if (adjMatrix[node][j] === 1) {
                 neighbors.push(j);
@@ -38,9 +88,9 @@ function findSubtours(adjMatrix) {
 
     for (let i = 0; i < n; i++) {
         if (!visited[i]) {
-            const currentCycle = [];
-            let currentNode = i;
-            let prevNode = -1; // To avoid immediate backtracking in the cycle trace
+            const currentCycle: number[] = []; // Added type
+            let currentNode: number = i;
+            let prevNode: number = -1; // To avoid immediate backtracking in the cycle trace
 
             console.log(`[DEBUG] [findSubtours] Starting DFS for new cycle from node ${i}`);
 
@@ -53,7 +103,7 @@ function findSubtours(adjMatrix) {
                 const neighbors = getNeighbors(currentNode);
 
                 // Determine the next node in the cycle path
-                let nextNode = -1;
+                let nextNode: number = -1; // Added type
                 if (neighbors.length === 0 && n === 1) { // Single node 'cycle'
                     break;
                 } else if (neighbors.length === 1 && n === 2) { // Two-node cycle
@@ -104,7 +154,9 @@ function findSubtours(adjMatrix) {
 
     // Final validation: Ensure all nodes are visited if n > 0
     if (n > 0 && !visited.every(v => v)) {
-        const unvisitedNodes = indices.filter(idx => !visited[idx]);
+        // Fix: Define indices for filtering
+        const allIndices = Array.from({ length: n }, (_, k) => k);
+        const unvisitedNodes = allIndices.filter((idx: number) => !visited[idx]); // Added type
         console.warn(`[WARN] [findSubtours] Not all nodes were visited after cycle detection. Unvisited: [${unvisitedNodes.join(', ')}]. This may indicate graph issues.`);
     }
 
@@ -123,24 +175,24 @@ function findSubtours(adjMatrix) {
  * @throws {Error} If the solver fails, finds no feasible solution, the
  *                 problem is unbounded, or cannot find a single-cycle solution within iterations.
  */
-export async function solveSitting(glpk, pref) {
+export async function solveSitting(glpk: GLPKInstance, pref: PreferenceMatrix): Promise<AdjacencyMatrix> { // Added types
     const EPSILON = 0.001; // Small incentive for pairing up
-    const n = pref.length;
-    const MAX_SUBTOUR_ITERATIONS = n * 2; // Max iterations for subtour elimination
+    const n: number = pref.length;
+    const MAX_SUBTOUR_ITERATIONS: number = n * 2; // Max iterations for subtour elimination
 
     // Handle trivial cases explicitly
     if (n === 0) return [];
     if (n === 1) return [[0]];
     if (n === 2) return [[0, 1], [1, 0]];
 
-    console.assert(pref.every(row => row.length === n), "Preference matrix must be square.");
+    console.assert(pref.every((row: number[]) => row.length === n), "Preference matrix must be square."); // Added type
     console.assert(n >= 3, "Solver logic assumes n >= 3 after initial checks.");
 
-    function getVarName(i, j) { return `x_${i}_${j}`; }
-    const indices = Array.from({ length: n }, (_, k) => k);
+    function getVarName(i: number, j: number): string { return `x_${i}_${j}`; } // Added types
+    const indices: number[] = Array.from({ length: n }, (_, k) => k);
 
     // --- Define BASE GLPK Problem Object ---
-    const baseLpProblem = {
+    const baseLpProblem: GLPKProblem = { // Added type
         name: 'TableSitting',
         objective: {
             direction: glpk.GLP_MAX,
@@ -154,14 +206,14 @@ export async function solveSitting(glpk, pref) {
         },
         subjectTo: [
             // 1. Degree Constraints (Row Sum = 2)
-            ...indices.map(i => ({
+            ...indices.map((i: number) => ({
                 name: `RowSum_${i}`,
                 vars: indices.filter(j => i !== j).map(j => ({ name: getVarName(i, j), coef: 1.0 })),
                 bnds: { type: glpk.GLP_FX, ub: 2.0, lb: 2.0 }
             })),
             // 2. Symmetry Constraints (x_i_j - x_j_i = 0 for i < j)
-            ...indices.flatMap(i =>
-                indices.filter(j => i < j).map(j => ({
+            ...indices.flatMap((i: number) =>
+                indices.filter(j => i < j).map((j: number) => ({
                     name: `Symm_${i}_${j}`,
                     vars: [{ name: getVarName(i, j), coef: 1.0 }, { name: getVarName(j, i), coef: -1.0 }],
                     bnds: { type: glpk.GLP_FX, ub: 0.0, lb: 0.0 }
@@ -178,14 +230,14 @@ export async function solveSitting(glpk, pref) {
     };
 
     // --- Iterative Solving Loop with Subtour Elimination ---
-    let currentSubtourConstraints = []; // Store added constraints
-    let lastVarMatrix = null; // Keep track of the last matrix found
+    let currentSubtourConstraints: GLPKConstraint[] = []; // Store added constraints - Added type
+    let lastVarMatrix: AdjacencyMatrix | null = null; // Keep track of the last matrix found - Added type
 
     for (let iter = 0; iter < MAX_SUBTOUR_ITERATIONS; iter++) {
         console.log(`[DEBUG] Starting solver iteration ${iter + 1}/${MAX_SUBTOUR_ITERATIONS}`);
 
         // Create the problem for this iteration by combining base and current subtour constraints
-        const lpProblemForIter = {
+        const lpProblemForIter: GLPKProblem = { // Added type
             ...baseLpProblem,
             subjectTo: [
                 ...baseLpProblem.subjectTo,
@@ -194,21 +246,23 @@ export async function solveSitting(glpk, pref) {
         };
         // console.log("[DEBUG] LP Problem for Iteration:", JSON.stringify(lpProblemForIter, null, 2)); // Very verbose
 
-        let result;
+        let result: GLPKSolveResult; // Added type
         try {
             result = await glpk.solve(lpProblemForIter, solverOptions);
-        } catch (error) {
+        } catch (error: unknown) { // Catch as unknown
             console.error(`[ERROR] glpk.solve threw an error in iteration ${iter + 1}:`, error);
-            throw new Error(`GLPK solver encountered an error during iteration ${iter + 1}: ${error.message || error}`);
+            // Type check before accessing .message
+            const errorMessage = (error instanceof Error) ? error.message : String(error);
+            throw new Error(`GLPK solver encountered an error during iteration ${iter + 1}: ${errorMessage}`);
         }
 
 
-        const statusMap = {
+        const statusMap: Record<number, string> = { // Added type
             [glpk.GLP_UNDEF]: 'Undefined', [glpk.GLP_FEAS]: 'Feasible',
             [glpk.GLP_INFEAS]: 'Infeasible', [glpk.GLP_NOFEAS]: 'No Feasible Solution',
             [glpk.GLP_OPT]: 'Optimal', [glpk.GLP_UNBND]: 'Unbounded'
         };
-        const statusText = statusMap[result.result.status] || `Unknown (${result.result.status})`;
+        const statusText: string = statusMap[result.result.status] || `Unknown (${result.result.status})`; // Added type
 
         // --- Process and Check Results ---
         if (result.result.status !== glpk.GLP_OPT && result.result.status !== glpk.GLP_FEAS) {
@@ -227,9 +281,10 @@ export async function solveSitting(glpk, pref) {
         }
 
         // --- Construct the Result Matrix ---
-        const varMatrix = Array(n).fill(0).map(() => Array(n).fill(0));
+        const varMatrix: AdjacencyMatrix = Array(n).fill(0).map(() => Array(n).fill(0)); // Added type
         for (const varName in result.result.vars) {
-            if (varName.startsWith('x_')) {
+            // Use hasOwnProperty check
+            if (Object.prototype.hasOwnProperty.call(result.result.vars, varName) && varName.startsWith('x_')) {
                 const parts = varName.split('_');
                 console.assert(parts.length === 3, `Invalid variable name format: ${varName}`);
                 const i = parseInt(parts[1], 10);
@@ -259,10 +314,12 @@ export async function solveSitting(glpk, pref) {
                 }
                 console.assert(rowSum === 2, `Person ${i} has degree ${rowSum} (expected 2)`);
             }
-        } catch (assertionError) {
+        } catch (assertionError: unknown) { // Catch as unknown
             console.error("[ERROR] Assertion failed on solver result matrix:", assertionError);
             console.error("[ERROR] Matrix:", JSON.stringify(varMatrix));
-            throw new Error(`Solver returned an invalid matrix (failed assertions) in iteration ${iter + 1}. ${assertionError.message}`);
+            // Type check before accessing .message
+            const errorMessage = (assertionError instanceof Error) ? assertionError.message : String(assertionError);
+            throw new Error(`Solver returned an invalid matrix (failed assertions) in iteration ${iter + 1}. ${errorMessage}`);
         }
 
 
@@ -285,11 +342,11 @@ export async function solveSitting(glpk, pref) {
             let addedConstraintsThisIteration = 0;
             for (const S of subtours) {
                 if (S.length < n && S.length > 0) { // Only add constraints for *proper* subtours
-                    const constraint = {
+                    const constraint: GLPKConstraint = { // Added type
                         name: `SubtourElim_${iter}_${S.slice(0, 5).join('_')}`, // Unique-ish name
-                        vars: S.flatMap(i =>
-                            S.filter(j => i < j) // Sum over pairs (i, j) within S where i < j
-                                .map(j => ({ name: getVarName(i, j), coef: 1.0 }))
+                        vars: S.flatMap((i: number) => // Added type
+                            S.filter((j: number) => i < j) // Added type
+                                .map((j: number) => ({ name: getVarName(i, j), coef: 1.0 })) // Added type
                         ),
                         // Constraint: sum(x_ij for i,j in S, i<j) <= |S| - 1
                         bnds: { type: glpk.GLP_UP, ub: S.length - 1.0, lb: 0.0 }

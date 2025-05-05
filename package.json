@@ -5,7 +5,16 @@
   "description": "",
   "dependencies": {
     "@bygdle/javascript-lp-solver": "^0.4.26",
-    "glpk.js": "^4.0.2",
-    "typescript": "^5.8.3"
+    "glpk.js": "^4.0.2"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.4"
   }
 }

@@ -7,8 +7,8 @@
  *                     Returns an empty array for n=0, [0] for n=1, [0, 1] for n=2.
  * @throws {Error} If the matrix dimensions are invalid or assumptions (degree 2 for n>=3, single cycle) are violated.
  */
-export function extractTableCycle(resultMatrix) {
-    const n = resultMatrix.length;
+export function extractTableCycle(resultMatrix: number[][]): number[] {
+    const n: number = resultMatrix.length;
 
     // Handle base cases
     if (n === 0) {
@@ -35,20 +35,20 @@ export function extractTableCycle(resultMatrix) {
     }
 
     // --- Cycle Tracing for n >= 3 ---
-    const path = [];
-    let currentNode = 0; // Start arbitrarily at node 0
-    let prevNode = -1;   // Represents the node visited just before currentNode
+    const path: number[] = [];
+    let currentNode: number = 0; // Start arbitrarily at node 0
+    let prevNode: number = -1;   // Represents the node visited just before currentNode
 
     console.log(`[DEBUG] [extractTableCycle] Starting cycle trace for n=${n} from node 0.`);
 
-    for (let step = 0; step < n; step++) {
+    for (let step: number = 0; step < n; step++) {
         console.assert(currentNode >= 0 && currentNode < n, `[extractTableCycle] Invalid currentNode: ${currentNode}`);
         path.push(currentNode);
         console.log(`[DEBUG] [extractTableCycle] Step ${step}: Added ${currentNode} to path. Path: [${path.join(', ')}]`);
 
         // Find neighbors of currentNode
-        const neighbors = [];
-        for (let neighborIdx = 0; neighborIdx < n; neighborIdx++) {
+        const neighbors: number[] = [];
+        for (let neighborIdx: number = 0; neighborIdx < n; neighborIdx++) {
             console.assert(resultMatrix[currentNode] !== undefined && resultMatrix[currentNode][neighborIdx] !== undefined, `[extractTableCycle] Invalid matrix access at [${currentNode}][${neighborIdx}]`);
             if (resultMatrix[currentNode][neighborIdx] === 1) {
                 neighbors.push(neighborIdx);
@@ -62,7 +62,7 @@ export function extractTableCycle(resultMatrix) {
         }
 
         // Determine the next node in the cycle
-        const nextNode = neighbors[0] === prevNode ? neighbors[1] : neighbors[0];
+        const nextNode: number = neighbors[0] === prevNode ? neighbors[1] : neighbors[0];
         console.assert(nextNode >= 0 && nextNode < n, `[extractTableCycle] Invalid nextNode calculated: ${nextNode}`);
 
         console.log(`[DEBUG] [extractTableCycle] Step ${step}: Current ${currentNode}, Prev ${prevNode}, Neighbors [${neighbors.join(', ')}], Next ${nextNode}`);
