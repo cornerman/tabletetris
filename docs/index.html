@@ -80,7 +80,7 @@
         // Import the solver function from the external module
         import { solveSitting } from './solve_sitting.mjs';
         // Import the table extraction function
-        import { extractTablesFromMatrix } from './matrix_to_table.mjs';
+        import { extractTableCycle } from './matrix_to_table.mjs';
 
         // --- Constants ---
         const DEBOUNCE_DELAY = 500; // ms
@@ -463,28 +463,53 @@
             console.log("Calling solveSitting...");
             try {
                 // Clear previous results before showing new ones
-                resultsContainer.innerHTML = ''; // Clear previous results
+                resultsContainer.innerHTML = ''; // Clear previous results container
 
+                // Display Input Matrix (Optional, keep for debugging)
                 const inputMatrixDiv = document.createElement('div');
                 inputMatrixDiv.innerHTML = '<h2>Input Preference Matrix:</h2><pre>' + preferencesText + '</pre>';
                 resultsContainer.appendChild(inputMatrixDiv);
+
 
                 const resultMatrix = await solveSitting(glpk, preferences);
                 console.log("Solver Result Matrix:");
                 console.log(resultMatrix.map(row => row.join(' ')).join("\n"));
 
-                const resultText = resultMatrix.map(row => row.join(' ')).join("\n");
+                // Display Solver Result Matrix (Optional, keep for debugging)
                 const rawResultDiv = document.createElement('div');
+                // Ensure resultText is defined before using it
+                const resultText = resultMatrix.map(row => row.join(' ')).join("\n");
                 rawResultDiv.innerHTML = '<h2>Solver Result Matrix:</h2><pre>' + resultText + '</pre>';
                 resultsContainer.appendChild(rawResultDiv);
 
 
-                // --- NEW: Extract and Display Tables ---
-                // Get the tables as arrays of indices
-                const tablesIndices = extractTablesFromMatrix(resultMatrix);
-                // Pass indices, people array, and container to displayTables
-                displayTables(tablesIndices, people, resultsContainer);
-                // --- End NEW ---
+                // --- Extract Single Table Cycle ---
+                // Assuming extractTableCycle now returns number[]
+                const tableIndices = extractTableCycle(resultMatrix);
+                console.log(`[DEBUG] Extracted table cycle indices: [${tableIndices ? tableIndices.join(', ') : 'None'}]`);
+
+                // --- Display The Table ---
+                const tableDisplayContainer = document.createElement('div'); // Container for the single table SVG
+                tableDisplayContainer.innerHTML = '<h3>Sitting Arrangement (Table):</h3>'; // Adjusted title
+
+                // Check if a valid table cycle (non-empty array) was returned
+                if (!tableIndices || tableIndices.length === 0) {
+                    // Check global people array state here
+                    if (people.length > 0) {
+                        tableDisplayContainer.innerHTML += '<p style="color: orange;">Could not determine a seating arrangement (maybe no one sits together, or solver failed?).</p>';
+                    } else {
+                        tableDisplayContainer.innerHTML += '<p>No people defined.</p>'; // Should not happen if n > 0 check passed
+                    }
+                } else {
+                    // Call displayTable directly with the single array of indices
+                    console.log(`[DEBUG] Calling displayTable with indices: [${tableIndices.join(', ')}]`);
+                    // Pass the specific table's indices, the full people list, and the container
+                    displayTable(tableIndices, people, tableDisplayContainer);
+                }
+                // Append the container holding the single table SVG (or messages) to the main results area
+                resultsContainer.appendChild(tableDisplayContainer);
+                // --- End Table Display ---
+
 
                 saveState(); // Save state after successful solve and UI update
 
@@ -506,151 +531,143 @@
         const debouncedTriggerSolutionUpdate = debounce(triggerSolutionUpdate, DEBOUNCE_DELAY);
 
 
-        // --- NEW: Display Tables using Enhanced SVG (accepts indices and people) ---
+        // --- REFACTORED: Display a Single Table using Enhanced SVG ---
         /**
-         * Renders the tables as SVG circles with people placed around them.
-         * @param {number[][]} tables - Array of tables, where each table is an array of person indices.
+         * Renders a single table as an SVG circle with people placed around it.
+         * @param {number[]} tableIndices - An array of person indices for this table.
          * @param {Array<{id: number, name: string}>} people - The master array of person objects.
          * @param {HTMLElement} container - The DOM element to append the SVG to.
          */
-        function displayTables(tables, people, container) { // tables is now number[][]
-            // Clear previous results first
-            while (container.firstChild) {
-                container.removeChild(container.firstChild);
-            }
-            container.innerHTML = '<h3>Sitting Arrangement (Tables):</h3>'; // Add title back
+        function displayTable(tableIndices, people, container) { // Renamed, tableIndices is now number[]
+            // No need to clear container here, caller should manage it.
+            // Container might now hold multiple SVGs.
 
-            if (!tables || tables.length === 0) {
-                let message = '';
-                // Check global people array state here (passed as arg now)
-                if (people.length > 0) {
-                    message = '<p style="color: orange;">Could not determine any seating arrangements (maybe no one sits together, or solver failed?).</p>';
-                } else {
-                    message = '<p>No people defined.</p>';
-                }
-                container.innerHTML += message;
+            // Check if the input table is valid
+            if (!tableIndices || tableIndices.length === 0) {
+                console.warn("[DEBUG] displayTable called with empty or invalid tableIndices.");
+                // Optionally, add a small message to the container for this specific call
+                // container.innerHTML += '<p style="font-style: italic; color: grey;">Skipping empty table.</p>';
                 return;
             }
 
             // Map indices to Person objects for easy lookup
             const indexToPerson = new Map(people.map((p, index) => [index, p]));
-            console.log("[DEBUG] displayTables: Created indexToPerson map:", indexToPerson);
+            // console.log("[DEBUG] displayTable: Created indexToPerson map:", indexToPerson); // Less verbose logging
+
+            const numPeople = tableIndices.length;
+
+            // --- NEW: Map indices to actual Person objects for this table ---
+            const currentTablePeople = tableIndices.map(index => {
+                const person = indexToPerson.get(index);
+                if (!person) {
+                    // Log error specifically for this table display attempt
+                    console.error(`[DEBUG] displayTable: Could not find person object for index ${index}.`);
+                }
+                return person;
+            }).filter(p => p); // Filter out any undefined entries if errors occurred
+
+            if (currentTablePeople.length !== numPeople) {
+                console.error(`[DEBUG] displayTable: Mismatch between indices count (${numPeople}) and found people (${currentTablePeople.length}). Skipping render for this table.`);
+                // Optionally add a message to the container
+                // container.innerHTML += `<p style="color: red;">Error rendering table with indices [${tableIndices.join(', ')}].</p>`;
+                return; // Skip rendering this potentially broken table
+            }
+            console.log(`[DEBUG] displayTable: Rendering table with people: [${currentTablePeople.map(p => p.name).join(', ')}] (Indices: [${tableIndices.join(', ')}])`);
 
 
-            // --- Create SVG Canvas ---
+            // --- Create SVG Canvas for THIS table ---
             const svgNS = "http://www.w3.org/2000/svg";
             const svg = document.createElementNS(svgNS, "svg");
 
+            // Calculate dimensions based on THIS table
             const outerRadius = TABLE_RADIUS + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET + PERSON_FONT_SIZE; // Approximate outer boundary
-            const svgHeight = TOP_PADDING + (outerRadius * 2) + TOP_PADDING;
+            const svgHeight = TOP_PADDING + (outerRadius * 2) + TOP_PADDING; // Height based on one table
+            const svgWidth = TABLE_PADDING + (outerRadius * 2) + TABLE_PADDING; // Width based on one table
+
+            svg.setAttribute("width", svgWidth);
             svg.setAttribute("height", svgHeight);
-            svg.setAttribute("style", "display: block; margin: auto; width: 100%; max-width: 100%;"); // Responsive width
+            // Add some margin between potential multiple SVGs
+            svg.setAttribute("style", "display: inline-block; vertical-align: top; margin: 10px; max-width: 100%;");
+            // Set viewBox for proper scaling
+            svg.setAttribute("viewBox", `0 0 ${svgWidth} ${svgHeight}`);
 
-            let currentXOffset = TABLE_PADDING + outerRadius; // Start X for the center of the first table's outer bounds
 
-            tables.forEach((tableIndices, tableIndex) => { // tableIndices is now number[]
-                const numPeople = tableIndices.length;
-                if (numPeople === 0) return; // Skip empty tables if they somehow occur
+            // Center calculation relative to this SVG's viewBox
+            const tableCenterX = svgWidth / 2;
+            const tableCenterY = svgHeight / 2; // Center vertically too
 
-                // --- NEW: Map indices to actual Person objects for this table ---
-                const currentTablePeople = tableIndices.map(index => {
-                    const person = indexToPerson.get(index);
-                    if (!person) {
-                        console.error(`[DEBUG] displayTables: Could not find person object for index ${index} in table ${tableIndex}.`);
-                    }
-                    return person;
-                }).filter(p => p); // Filter out any undefined entries if errors occurred
+            // --- Create Group for this Table ---
+            const tableGroup = document.createElementNS(svgNS, "g");
 
-                if (currentTablePeople.length !== numPeople) {
-                    console.error(`[DEBUG] displayTables: Mismatch between indices count (${numPeople}) and found people (${currentTablePeople.length}) for table ${tableIndex}. Skipping render.`);
-                    return; // Skip rendering this potentially broken table
+            // --- Draw Table Circle ---
+            const tableCircle = document.createElementNS(svgNS, "circle");
+            tableCircle.setAttribute("cx", tableCenterX);
+            tableCircle.setAttribute("cy", tableCenterY);
+            tableCircle.setAttribute("r", TABLE_RADIUS);
+            tableCircle.setAttribute("stroke", TABLE_STROKE_COLOR);
+            tableCircle.setAttribute("stroke-width", "3"); // Slightly thicker stroke
+            tableCircle.setAttribute("fill", TABLE_FILL_COLOR);
+            tableGroup.appendChild(tableCircle);
+
+            // --- Place People around the Table ---
+            const angleStep = (2 * Math.PI) / numPeople;
+
+            // Iterate through the Person objects we just mapped
+            currentTablePeople.forEach((person, personIndex) => {
+                const personName = person.name; // Get name from person object
+                // Calculate angle: Start at top (-PI/2) and go clockwise
+                // Use personIndex (0, 1, 2...) from the forEach loop for ordering
+                const angle = -Math.PI / 2 + personIndex * angleStep;
+                const cosAngle = Math.cos(angle);
+                const sinAngle = Math.sin(angle);
+
+                // 1. Calculate Person Circle Position (on the table radius)
+                const personX = tableCenterX + TABLE_RADIUS * cosAngle;
+                const personY = tableCenterY + TABLE_RADIUS * sinAngle;
+
+                // Draw Person Circle
+                const personCircle = document.createElementNS(svgNS, "circle");
+                personCircle.setAttribute("cx", personX);
+                personCircle.setAttribute("cy", personY);
+                personCircle.setAttribute("r", PERSON_CIRCLE_RADIUS);
+                personCircle.setAttribute("fill", PERSON_FILL_COLOR);
+                tableGroup.appendChild(personCircle);
+
+                // 2. Calculate Text Position (outside the person circle)
+                const textRadius = TABLE_RADIUS + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET;
+                const textX = tableCenterX + textRadius * cosAngle;
+                const textY = tableCenterY + textRadius * sinAngle;
+
+                // Draw Person Name Text
+                const text = document.createElementNS(svgNS, "text");
+                text.setAttribute("x", textX);
+                text.setAttribute("y", textY);
+
+                // Adjust alignment based on angle for better readability
+                if (Math.abs(cosAngle) < 0.1) { // Near vertical (top/bottom)
+                    text.setAttribute("text-anchor", "middle");
+                } else if (cosAngle > 0) { // Right side
+                    text.setAttribute("text-anchor", "start");
+                } else { // Left side
+                    text.setAttribute("text-anchor", "end");
                 }
-                console.log(`[DEBUG] displayTables: Rendering table ${tableIndex} with people: [${currentTablePeople.map(p => p.name).join(', ')}] (Indices: [${tableIndices.join(', ')}])`);
+                text.setAttribute("dominant-baseline", "middle"); // Vertically center
+                text.setAttribute("font-size", `${PERSON_FONT_SIZE}px`);
+                text.setAttribute("font-family", "sans-serif"); // Specify a common font
+                text.setAttribute("fill", TEXT_COLOR);
+                text.textContent = personName; // Use the name from the Person object
 
-
-                const tableCenterX = currentXOffset;
-                const tableCenterY = TOP_PADDING + outerRadius; // Center based on the overall element height
-
-                // --- Create Group for this Table ---
-                const tableGroup = document.createElementNS(svgNS, "g");
-
-                // --- Draw Table Circle ---
-                const tableCircle = document.createElementNS(svgNS, "circle");
-                tableCircle.setAttribute("cx", tableCenterX);
-                tableCircle.setAttribute("cy", tableCenterY);
-                tableCircle.setAttribute("r", TABLE_RADIUS);
-                tableCircle.setAttribute("stroke", TABLE_STROKE_COLOR);
-                tableCircle.setAttribute("stroke-width", "3"); // Slightly thicker stroke
-                tableCircle.setAttribute("fill", TABLE_FILL_COLOR);
-                tableGroup.appendChild(tableCircle);
-
-                // --- Place People around the Table ---
-                const angleStep = (2 * Math.PI) / numPeople;
-
-                // Iterate through the Person objects we just mapped
-                currentTablePeople.forEach((person, personIndex) => {
-                    const personName = person.name; // Get name from person object
-                    // Calculate angle: Start at top (-PI/2) and go clockwise
-                    // Use personIndex (0, 1, 2...) from the forEach loop for ordering
-                    const angle = -Math.PI / 2 + personIndex * angleStep;
-                    const cosAngle = Math.cos(angle);
-                    const sinAngle = Math.sin(angle);
-
-                    // 1. Calculate Person Circle Position (on the table radius)
-                    const personX = tableCenterX + TABLE_RADIUS * cosAngle;
-                    const personY = tableCenterY + TABLE_RADIUS * sinAngle;
-
-                    // Draw Person Circle
-                    const personCircle = document.createElementNS(svgNS, "circle");
-                    personCircle.setAttribute("cx", personX);
-                    personCircle.setAttribute("cy", personY);
-                    personCircle.setAttribute("r", PERSON_CIRCLE_RADIUS);
-                    personCircle.setAttribute("fill", PERSON_FILL_COLOR);
-                    tableGroup.appendChild(personCircle);
-
-                    // 2. Calculate Text Position (outside the person circle)
-                    const textRadius = TABLE_RADIUS + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET;
-                    const textX = tableCenterX + textRadius * cosAngle;
-                    const textY = tableCenterY + textRadius * sinAngle;
-
-                    // Draw Person Name Text
-                    const text = document.createElementNS(svgNS, "text");
-                    text.setAttribute("x", textX);
-                    text.setAttribute("y", textY);
-
-                    // Adjust alignment based on angle for better readability
-                    if (Math.abs(cosAngle) < 0.1) { // Near vertical (top/bottom)
-                        text.setAttribute("text-anchor", "middle");
-                    } else if (cosAngle > 0) { // Right side
-                        text.setAttribute("text-anchor", "start");
-                    } else { // Left side
-                        text.setAttribute("text-anchor", "end");
-                    }
-                    text.setAttribute("dominant-baseline", "middle"); // Vertically center
-                    text.setAttribute("font-size", `${PERSON_FONT_SIZE}px`);
-                    text.setAttribute("font-family", "sans-serif"); // Specify a common font
-                    text.setAttribute("fill", TEXT_COLOR);
-                    text.textContent = personName; // Use the name from the Person object
-
-                    tableGroup.appendChild(text);
-                });
-
-                // Append the finished table group to the SVG
-                svg.appendChild(tableGroup);
-
-                // Update X offset for the next table's center (based on outer bounds)
-                currentXOffset += (outerRadius * 2) + TABLE_PADDING;
+                tableGroup.appendChild(text);
             });
 
-            // Set final SVG width based on the last table's position
-            const svgWidth = currentXOffset - TABLE_PADDING + outerRadius; // Total width needed
-            svg.setAttribute("width", svgWidth > 0 ? svgWidth : "100"); // Use minimum width if calculation fails
-            // Set viewBox for proper scaling if width is responsive
-            svg.setAttribute("viewBox", `0 0 ${svgWidth > 0 ? svgWidth : 100} ${svgHeight}`);
+            // Append the finished table group to the SVG
+            svg.appendChild(tableGroup);
 
-            // Append the SVG to the container
+            // Removed loop and related offset logic
+
+            // Append THIS SVG to the main container
             container.appendChild(svg);
-        }
+        } // End of displayTable
 
 
         // --- Initialization ---
