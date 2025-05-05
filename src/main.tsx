@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import GLPK from 'glpk.js';
 import { FaHeart, FaSkullCrossbones } from 'react-icons/fa';
+import TableIcon from '../public/table.svg?react';
+import PeopleIcon from '../public/people.svg?react';
+import PreferencesIcon from '../public/preferences.svg?react';
 import { solveSitting } from './solve_sitting';
 import { GLPKInstance } from './glpk_facade';
 import { extractTableCycle } from './matrix_to_table';
@@ -15,7 +18,8 @@ const PREFERENCE_VALUE_WANT = 1;
 const PREFERENCE_VALUE_DISLIKE = -1;
 
 // --- SVG Constants (moved to component later if needed) ---
-const TABLE_RADIUS = 80;         // px
+const TABLE_RX = 70;         // px - Horizontal radius for oval table (swapped)
+const TABLE_RY = 120;        // px - Vertical radius for oval table (swapped)
 const TABLE_PADDING = 50;        // px
 const PERSON_FONT_SIZE = 12;     // px
 const PERSON_CIRCLE_RADIUS = 8; // px
@@ -34,7 +38,19 @@ interface Person {
 
 type PreferencesState = Record<string, boolean>; // Key: pref_want/dislike_A_B
 type SolverStatus = 'idle' | 'loading' | 'error' | 'success';
-type ActiveTab = 'people' | 'preferences' | 'results'; // <-- New Type
+type TabId = 'people' | 'preferences' | 'results';
+
+interface TabDefinition {
+    id: TabId;
+    label: string;
+    icon: React.FC<React.SVGProps<SVGSVGElement>>;
+}
+
+const TABS: TabDefinition[] = [
+    { id: 'people', label: 'People', icon: PeopleIcon },
+    { id: 'preferences', label: 'Preferences', icon: PreferencesIcon },
+    { id: 'results', label: 'Table', icon: TableIcon },
+];
 
 // Result type: Array of person objects representing the seating arrangement
 type SeatingResult = Person[] | null;
@@ -46,6 +62,7 @@ function App() {
     const [people, setPeople] = useState<Person[]>([]);
     const [nextPersonId, setNextPersonId] = useState<number>(0);
     const [preferences, setPreferences] = useState<PreferencesState>({});
+    const personNameInputRef = useRef<HTMLInputElement>(null);
 
     // Solver State
     const [solverStatus, setSolverStatus] = useState<SolverStatus>('idle');
@@ -56,7 +73,7 @@ function App() {
 
     // --- New State ---
     const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
-    const [activeTab, setActiveTab] = useState<ActiveTab>('people');
+    const [activeTab, setActiveTab] = useState<TabId>(TABS[0].id);
     // State for Preferences Tab (will be used later)
     const [editingPrefsForPersonId, setEditingPrefsForPersonId] = useState<number | null>(null);
 
@@ -346,6 +363,25 @@ function App() {
         // No need for else, only care when preferences tab is active
     }, [activeTab, people, editingPrefsForPersonId]); // Re-run if tab changes, people list changes, or the ID itself changes
 
+    // Update hash change listener to use TabId
+    useEffect(() => {
+        const handleHashChange = () => {
+            const newTab = getTabFromHash(window.location.hash);
+            if (newTab !== activeTab) {
+                console.log(`[DEBUG] Hash changed, switching tab to: ${newTab}`);
+                setActiveTab(newTab);
+            }
+        };
+
+        window.addEventListener('hashchange', handleHashChange);
+        // Set initial tab based on hash
+        handleHashChange(); // Call once on load
+
+        return () => {
+            window.removeEventListener('hashchange', handleHashChange);
+        };
+    }, [activeTab]); // Re-run if activeTab changes programmatically
+
     // --- Event Handlers ---
     const handleAddPerson = () => {
         const name = personNameInput.trim();
@@ -365,6 +401,9 @@ function App() {
         setPeople([...people, newPerson]);
         setNextPersonId(nextPersonId + 1);
         setPersonNameInput(''); // Clear input field
+
+        // Focus the input field
+        personNameInputRef.current?.focus();
 
         // TODO: Trigger solver update? Might want debounce here.
     };
@@ -457,42 +496,50 @@ function App() {
     const personBeingEdited = people.find(p => p.id === editingPrefsForPersonId);
 
     return (
-        <div style={{ fontFamily: 'sans-serif' }}>
-            {/* Tab Navigation */}
-            <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid #ccc' }}>
-                <button
-                    type="button"
-                    onClick={() => { setActiveTab('people'); window.location.hash = '#people'; }}
-                    style={getTabStyle('people', activeTab)}
-                >
-                    People ({people.length})
-                </button>
-                <button
-                    type="button"
-                    onClick={() => { setActiveTab('preferences'); window.location.hash = '#preferences'; }}
-                    style={getTabStyle('preferences', activeTab)}
-                    disabled={people.length < 2} // Disable if fewer than 2 people
-                >
-                    Preferences
-                </button>
-                <button
-                    type="button"
-                    onClick={() => { setActiveTab('results'); window.location.hash = '#results'; }}
-                    style={getTabStyle('results', activeTab)}
-                    disabled={people.length === 0} // <-- Disable if no people
-                >
-                    Table
-                </button>
+        <div style={{
+            maxWidth: '800px',
+            margin: '0 auto',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column'
+        }}>
+            {/* Tab Navigation - Modified style */}
+            <div style={{
+                display: 'flex',
+                borderBottom: '1px solid #ccc',
+                flexShrink: 0
+            }}>
+                {TABS.map(tab => {
+                    return (
+                        <button
+                            key={tab.id}
+                            style={getTabStyle(tab.id, activeTab)}
+                            onClick={() => {
+                                setActiveTab(tab.id);
+                                window.location.hash = tab.id; // Update hash on click
+                            }}
+                        >
+                            <tab.icon width="18" height="18" /> {/* Render the icon */}
+                            {tab.label}
+                        </button>
+                    );
+                })}
             </div>
 
-            {/* Tab Content */}
-            <div>
-                {/* People Tab */}
+            {/* Content Area - Make it flexible */}
+            <div style={{
+                flexGrow: 1,
+                overflowY: 'auto',
+                padding: '20px'
+            }}>
+
+                {/* Conditional Content Based on Active Tab */}
                 {activeTab === 'people' && (
                     <div>
                         {/* Input Section */}
                         <div style={{ padding: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                             <input
+                                ref={personNameInputRef}
                                 type="text"
                                 id="personName"
                                 name="personName"
@@ -541,7 +588,6 @@ function App() {
                     </div>
                 )}
 
-                {/* Preferences Tab */}
                 {activeTab === 'preferences' && (
                     <div>
                         {/* Person Selector Buttons */}
@@ -701,17 +747,22 @@ function App() {
                     </div>
                 )}
 
-                {/* Results Tab */}
                 {activeTab === 'results' && (
-                    <div>
+                    <div style={{ height: '100%' }}>
                         {solverStatus === 'idle' && people.length === 0 && <p>Add people and set preferences first.</p>}
                         {solverStatus === 'idle' && people.length > 0 && <p>Preferences set, ready to calculate (or calculation pending).</p>}
                         {solverStatus === 'loading' && <p style={{ fontStyle: 'italic' }}>Calculating optimal seating...</p>}
                         {solverStatus === 'error' && <p style={{ color: 'red' }}>Error: {solverError || 'Unknown error during solving'}</p>}
                         {solverStatus === 'success' && (
                             seatingResult ? (
-                                <div style={{ textAlign: 'center' }}>
-                                    <p style={{ color: 'green' }}>Optimal seating arrangement found:</p>
+                                <div style={{
+                                    textAlign: 'center',
+                                    height: '100%',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
                                     <TableVisualization table={seatingResult} />
                                 </div>
                             ) : (
@@ -727,17 +778,21 @@ function App() {
 
 // --- Helper Functions for Styling ---
 
-const getTabStyle = (tabName: ActiveTab, activeTab: ActiveTab): React.CSSProperties => ({
+const getTabStyle = (tabId: TabId, currentActiveTab: TabId): React.CSSProperties => ({
     padding: '10px 15px',
     cursor: 'pointer',
-    border: 'none',
-    borderBottom: activeTab === tabName ? '3px solid #5b9bd5' : '3px solid transparent',
-    marginBottom: '-1px', // Overlap the container's bottom border
-    background: activeTab === tabName ? '#f0f0f0' : 'none',
-    fontWeight: activeTab === tabName ? 'bold' : 'normal',
-    fontSize: '1em',
-    flexGrow: 1,
-    textAlign: 'center',
+    border: 'none', // Remove default button border
+    background: 'none', // Remove default button background
+    fontWeight: 'normal', // Keep normal to prevent width jumps
+    color: tabId === currentActiveTab ? '#5b9bd5' : '#666', // Active color blue
+    borderBottom: tabId === currentActiveTab ? '3px solid #5b9bd5' : '3px solid transparent', // Blue active line, transparent placeholder
+    marginBottom: '-1px', // Pull border up slightly to cover container border
+    display: 'inline-flex', // Use flex to align icon and text
+    alignItems: 'center',    // Center items vertically
+    justifyContent: 'center', // Center content within the tab
+    gap: '8px',             // Add space between icon and text
+    userSelect: 'none',     // Prevent text selection
+    flex: 1,                // Make tabs expand equally
 });
 
 const getButtonStyle = (type: 'primary' | 'secondary' = 'primary'): React.CSSProperties => ({
@@ -785,9 +840,10 @@ function TableVisualization({ table }: TableVisualizationProps) {
     const numPeople = table.length;
 
     // Calculate SVG dimensions based on constants
-    const outerRadius = TABLE_RADIUS + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET + PERSON_FONT_SIZE;
-    const svgHeight = TOP_PADDING + (outerRadius * 2) + TOP_PADDING;
-    const svgWidth = TABLE_PADDING + (outerRadius * 2) + TABLE_PADDING;
+    const outerRadiusX = TABLE_RX + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET + PERSON_FONT_SIZE;
+    const outerRadiusY = TABLE_RY + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET + PERSON_FONT_SIZE;
+    const svgHeight = TOP_PADDING + (outerRadiusY * 2) + TOP_PADDING;
+    const svgWidth = TABLE_PADDING + (outerRadiusX * 2) + TABLE_PADDING;
     const tableCenterX = svgWidth / 2;
     const tableCenterY = svgHeight / 2;
 
@@ -795,17 +851,16 @@ function TableVisualization({ table }: TableVisualizationProps) {
 
     return (
         <svg
-            width={svgWidth}
-            height={svgHeight}
             viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-            style={{ display: 'inline-block', verticalAlign: 'top', margin: '10px', maxWidth: '100%' }}
+            style={{ display: 'block', margin: '0 auto', maxWidth: '100%', height: '100%' }}
         >
             <g> {/* Table Group */}
-                {/* Draw Table Circle */}
-                <circle
+                {/* Draw Table Ellipse */}
+                <ellipse
                     cx={tableCenterX}
                     cy={tableCenterY}
-                    r={TABLE_RADIUS}
+                    rx={TABLE_RX}
+                    ry={TABLE_RY}
                     stroke={TABLE_STROKE_COLOR}
                     strokeWidth="3"
                     fill={TABLE_FILL_COLOR}
@@ -817,20 +872,23 @@ function TableVisualization({ table }: TableVisualizationProps) {
                     const cosAngle = Math.cos(angle);
                     const sinAngle = Math.sin(angle);
 
-                    // Person Circle Position
-                    const personX = tableCenterX + TABLE_RADIUS * cosAngle;
-                    const personY = tableCenterY + TABLE_RADIUS * sinAngle;
+                    // Person Circle Position (on the ellipse perimeter)
+                    const personX = tableCenterX + TABLE_RX * cosAngle;
+                    const personY = tableCenterY + TABLE_RY * sinAngle;
 
-                    // Text Position
-                    const textRadius = TABLE_RADIUS + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET;
-                    const textX = tableCenterX + textRadius * cosAngle;
-                    const textY = tableCenterY + textRadius * sinAngle;
+                    // Text Position (slightly outside the ellipse)
+                    // Calculate an effective radius for text placement at this angle
+                    const textRadiusX = TABLE_RX + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET;
+                    const textRadiusY = TABLE_RY + PERSON_CIRCLE_RADIUS + PERSON_TEXT_OFFSET;
+                    const textX = tableCenterX + textRadiusX * cosAngle;
+                    const textY = tableCenterY + textRadiusY * sinAngle;
 
-                    // Determine text anchor
+                    // Determine text anchor (simplified approach)
                     let textAnchor = 'middle';
                     if (Math.abs(cosAngle) > 0.1) { // Avoid pure vertical
                         textAnchor = cosAngle > 0 ? 'start' : 'end';
                     }
+                    // A more refined text anchor might be needed for better positioning on ovals
 
                     return (
                         <g key={person.id}>
@@ -862,13 +920,12 @@ function TableVisualization({ table }: TableVisualizationProps) {
 }
 
 // Function to safely parse the hash
-const getTabFromHash = (hash: string): ActiveTab => {
-    const validTabs: ActiveTab[] = ['people', 'preferences', 'results'];
-    const tabName = hash.substring(1); // Remove '#'
-    if ((validTabs as string[]).includes(tabName)) {
-        return tabName as ActiveTab;
-    }
-    return 'people'; // Default
+const getTabFromHash = (hash: string): TabId => {
+    const tabId = hash.substring(1); // Remove #
+    // Find the tab definition with the matching id
+    const foundTab = TABS.find(tab => tab.id === tabId);
+    // Return the found tab's id or the default tab's id if not found
+    return foundTab ? foundTab.id : TABS[0].id;
 };
 
 const rootElement = document.getElementById('root');

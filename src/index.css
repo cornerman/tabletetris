@@ -1,7 +1,34 @@
 /* src/index.css */
-body {
-    margin: 0;
-    font-family: sans-serif;
-    /* Ensure consistent font */
-    /* Add any other global resets or base styles here if needed */
+
+/* Global box-sizing rule */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
+
+/* Reset default browser styles */
+html,
+body,
+#root {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow-x: hidden;
+    font-family: sans-serif;
+}
+
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f8f9fa;
+    color: #333;
+}
+
+code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+        monospace;
+}
+
+/* Keep other global styles below if any */
