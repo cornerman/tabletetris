@@ -439,18 +439,14 @@ function App() {
             if (trimmedName.toLowerCase() === 'tetris') {
                 console.log("[DEBUG] Tetris easter egg triggered! Setting hash.");
                 window.location.hash = 'tetris'; // Set hash to trigger game
+                setPersonNameInput(''); // Clear input
+                return;
             }
 
             // Prevent adding duplicates (case-insensitive)
             if (people.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
                 alert(`Person "${trimmedName}" already exists.`);
-                // If the duplicate is 'tetris' and we just triggered the game, clear the input but don't show alert again.
-                if (trimmedName.toLowerCase() === 'tetris') {
-                    setPersonNameInput('');
-                    return;
-                } else {
-                    return; // Don't add other duplicates
-                }
+                return; // Don't add other duplicates
             }
 
             const newPerson: Person = { id: nextPersonId, name: trimmedName };
