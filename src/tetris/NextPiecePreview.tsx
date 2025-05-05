@@ -21,8 +21,8 @@ const NextPiecePreview: React.FC<NextPiecePreviewProps> = ({ pieceType }) => {
 
     // Simple container styling
     const containerStyle: React.CSSProperties = {
-        width: '80px', // Fixed width for the preview area
-        height: '80px', // Fixed height
+        width: '60px', // Reduced width
+        height: '60px', // Reduced height
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -38,8 +38,8 @@ const NextPiecePreview: React.FC<NextPiecePreviewProps> = ({ pieceType }) => {
         display: 'grid',
         gridTemplateRows: `repeat(${shapeHeight}, 1fr)`,
         gridTemplateColumns: `repeat(${shapeWidth}, 1fr)`,
-        width: `${shapeWidth * 15}px`, // Calculate width based on shape
-        height: `${shapeHeight * 15}px`, // Calculate height based on shape
+        width: `${shapeWidth * 12}px`, // Reduced cell size multiplier
+        height: `${shapeHeight * 12}px`, // Reduced cell size multiplier
         gap: '1px',
     };
 

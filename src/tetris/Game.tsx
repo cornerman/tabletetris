@@ -469,72 +469,54 @@ const Game: React.FC<GameProps> = ({ onClose }) => {
 
     return (
         <div style={{
-            width: '100vw',
-            height: '100vh',
+            width: '100vw',        // Use vw for viewport width
+            height: '100vh',       // Use vh for viewport height
             backgroundColor: '#222',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center', // Center vertically overall
+            display: 'flex',       // Enable flexbox
+            flexDirection: 'column', // Stack children vertically
+            alignItems: 'center',  // Center children horizontally
+            justifyContent: 'center', // Center children vertically
             position: 'relative',
-            overflow: 'hidden' // Restore overflow hidden
+            overflow: 'hidden'    // Prevent overflow/scrolling
         }}>
-            {/* Close Button */}
-            <button
-                onClick={onClose}
-                style={{
-                    position: 'absolute',
-                    top: '10px', // Closer to edge
-                    right: '10px', // Closer to edge
-                    width: '30px', // Smaller width
-                    height: '30px', // Smaller height
-                    padding: '0', // Remove padding
-                    backgroundColor: 'rgba(255, 255, 255, 0.2)', // Semi-transparent background
-                    color: '#eee', // Light text
-                    border: '1px solid #888', // Subtle border
-                    borderRadius: '50%', // Make it round
-                    cursor: 'pointer',
-                    fontSize: '16px', // Adjust font size for 'X'
-                    lineHeight: '30px', // Center 'X' vertically
-                    textAlign: 'center', // Center 'X' horizontally
-                    zIndex: 10
-                }}
-            >
-                X
-            </button>
-
             {/* Game Title - REMOVED */}
             {/* <h1 style={{ color: '#eee', marginBottom: '15px' }}>Tetris</h1> */}
 
             {/* Central Game Area Layout */}
             <div className="tetris-central-area">
-
+                {/* Close Button */}
                 {/* NEW: Top Info Row */}
-                <div className="tetris-info-row" style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    gap: '20px' // Gap between Preview and Stats
-                }}>
+                <div className="tetris-info-row">
                     {/* MOVED: Next Piece Preview */}
                     <NextPiecePreview pieceType={nextPieceType} />
 
                     {/* MOVED: Info Display (Score, Level, Lines) */}
-                    <div className="stats-info" style={{ // className exists
-                        // Inline styles for base appearance (CSS can refine)
-                        color: '#eee',
-                        backgroundColor: '#111',
-                        padding: '10px 15px',
-                        borderRadius: '5px',
-                        border: '1px solid #555',
-                        textAlign: 'left'
-                        // Font size controlled by CSS
-                    }}>
+                    <div className="stats-info">
                         <div>Score: {score}</div>
                         <div>Level: {level}</div>
                         <div>Lines: {linesCleared}</div>
                     </div>
+
+                    <button
+                        onClick={onClose}
+                        style={{
+                            alignSelf: 'start',
+                            width: '30px', // Smaller width
+                            height: '30px', // Smaller height
+                            padding: '0', // Remove padding
+                            backgroundColor: 'rgba(255, 255, 255, 0.2)', // Semi-transparent background
+                            color: '#eee', // Light text
+                            border: '1px solid #888', // Subtle border
+                            borderRadius: '50%', // Make it round
+                            cursor: 'pointer',
+                            fontSize: '16px', // Adjust font size for 'X'
+                            lineHeight: '30px', // Center 'X' vertically
+                            textAlign: 'center', // Center 'X' horizontally
+                        }}
+                    >
+                        X
+                    </button>
+
                 </div>
 
                 {/* Board Container */}

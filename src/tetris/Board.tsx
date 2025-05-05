@@ -14,7 +14,7 @@ const Board: React.FC<BoardProps> = ({ board }) => {
     }
 
     // Calculate size based on viewport height, maintaining aspect ratio
-    const boardHeightVh = 75; // Use 75% of viewport height for the board
+    const boardHeightVh = 65; // Use 65% (Increased from 60%) of viewport height for the board
     const boardPixelHeight = `calc(${boardHeightVh}vh - 4px)`; // Subtract border width
     const boardPixelWidth = `calc((${boardHeightVh}vh - 4px) * (${BOARD_WIDTH} / ${BOARD_HEIGHT}))`; // Calculate width based on height and aspect ratio
 
