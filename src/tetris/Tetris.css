@@ -1,0 +1,74 @@
+/* Placeholder for future CSS rules */
+/* We are using inline styles primarily */
+
+/* Base styles applied to all screen sizes */
+
+.tetris-central-area {
+    /* Center the whole game area block if needed, */
+    /* assuming parent uses flex or grid for centering. */
+    /* Inline styles already handle internal flex layout (column, align center) */
+    width: 90%;
+    /* Example: Limit width */
+}
+
+/* Appearance for Preview box */
+.next-piece-preview {
+    /* Using inline styles for now, keep small */
+    width: 60px;
+    height: 60px;
+    padding: 3px;
+    /* Inline style sets background, border etc */
+}
+
+.next-piece-preview p {
+    font-size: 0.7em;
+    /* Smaller 'Next:' text */
+    margin-bottom: 2px;
+    /* Inline style sets color */
+}
+
+/* Appearance for Stats box */
+.stats-info {
+    /* Inline style sets background, border, padding, text align etc */
+    font-size: 0.9em;
+    /* Slightly smaller text */
+}
+
+/* REMOVE mobile-specific overrides */
+/*
+@media (max-width: 768px) {
+    .tetris-central-area {
+        width: 100%;
+        max-width: none;
+        gap: 10px;
+        align-items: flex-start;
+    }
+
+    .tetris-central-area>div:nth-child(1) {
+        flex-shrink: 0;
+        flex-grow: 0;
+    }
+
+    .tetris-central-area>div:nth-child(2) {
+        flex-grow: 1;
+        min-width: 0;
+    }
+
+    .next-piece-preview {
+        width: 50px;
+        height: 50px;
+        padding: 2px;
+    }
+
+    .next-piece-preview p {
+        font-size: 0.6em;
+        margin-bottom: 1px;
+    }
+
+    .stats-info {
+        font-size: 0.75em;
+        padding: 5px 8px;
+        word-break: break-all;
+    }
+}
+*/

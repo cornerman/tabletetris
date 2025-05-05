@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import GLPK from 'glpk.js';
 import { FaHeart, FaSkullCrossbones } from 'react-icons/fa';
+import Game from './tetris/Game'; // <-- CORRECTED Import path
 import TableIcon from '../public/table.svg?react';
 import PeopleIcon from '../public/people.svg?react';
 import PreferencesIcon from '../public/preferences.svg?react';
@@ -76,6 +77,9 @@ function App() {
     const [activeTab, setActiveTab] = useState<TabId>(TABS[0].id);
     // State for Preferences Tab (will be used later)
     const [editingPrefsForPersonId, setEditingPrefsForPersonId] = useState<number | null>(null);
+
+    // --- Easter Egg State (Using this for Tetris) ---
+    const [isTetrisMode, setIsTetrisMode] = useState(false);
 
     // --- GLPK Initialization ---
     const initializeGlpk = async () => {
@@ -176,6 +180,26 @@ function App() {
     };
 
     // --- Effects ---
+
+    // Effect to sync isTetrisMode state with URL hash
+    useEffect(() => {
+        const checkHash = () => {
+            const isTetris = window.location.hash === '#tetris';
+            console.log(`[DEBUG] Hash changed. Hash: "${window.location.hash}", IsTetris: ${isTetris}`);
+            setIsTetrisMode(isTetris);
+        };
+
+        checkHash(); // Check hash on initial load
+
+        window.addEventListener('hashchange', checkHash);
+        console.log("[DEBUG] Added hashchange listener.");
+
+        // Cleanup listener on component unmount
+        return () => {
+            window.removeEventListener('hashchange', checkHash);
+            console.log("[DEBUG] Removed hashchange listener.");
+        };
+    }, []); // Empty dependency array ensures this runs only on mount and unmount
 
     // Load initial state from localStorage on mount
     useEffect(() => {
@@ -409,28 +433,40 @@ function App() {
 
     // --- Event Handlers ---
     const handleAddPerson = () => {
-        const name = personNameInput.trim();
-        if (name === "") {
-            console.log("[DEBUG] handleAddPerson called with empty name.");
-            return; // Don't add empty names
+        const trimmedName = personNameInput.trim();
+        if (trimmedName) {
+            // Easter Egg: Trigger Tetris game
+            if (trimmedName.toLowerCase() === 'tetris') {
+                console.log("[DEBUG] Tetris easter egg triggered! Setting hash.");
+                window.location.hash = 'tetris'; // Set hash to trigger game
+            }
+
+            // Prevent adding duplicates (case-insensitive)
+            if (people.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
+                alert(`Person "${trimmedName}" already exists.`);
+                // If the duplicate is 'tetris' and we just triggered the game, clear the input but don't show alert again.
+                if (trimmedName.toLowerCase() === 'tetris') {
+                    setPersonNameInput('');
+                    return;
+                } else {
+                    return; // Don't add other duplicates
+                }
+            }
+
+            const newPerson: Person = { id: nextPersonId, name: trimmedName };
+            const updatedPeople = [...people, newPerson];
+            setPeople(updatedPeople);
+            setNextPersonId(prevId => prevId + 1);
+            setPersonNameInput(''); // Clear input
+            personNameInputRef.current?.focus();
+        } else {
+            personNameInputRef.current?.focus();
         }
-        if (people.some((p) => p.name === name)) {
-            alert(`Person with name "${name}" already exists.`);
-            return;
-        }
+    };
 
-        const newPerson: Person = { id: nextPersonId, name: name };
-        console.log(`[DEBUG] Adding person: ${JSON.stringify(newPerson)}`);
-
-        // Update state immutably
-        setPeople([...people, newPerson]);
-        setNextPersonId(nextPersonId + 1);
-        setPersonNameInput(''); // Clear input field
-
-        // Focus the input field
-        personNameInputRef.current?.focus();
-
-        // TODO: Trigger solver update? Might want debounce here.
+    const handleTetrisClose = () => {
+        console.log("[DEBUG] Closing Tetris game. Resetting hash.");
+        window.location.hash = ''; // Reset hash to close game
     };
 
     const handlePreferenceChange = (personAId: number, personBId: number, prefType: 'want' | 'dislike' | 'neutral', isChecked?: boolean /* isChecked is now less relevant for icons */) => {
@@ -520,6 +556,13 @@ function App() {
     // Helper to get the currently selected person for preference editing
     const personBeingEdited = people.find(p => p.id === editingPrefsForPersonId);
 
+    // If Tetris mode is active, render ONLY the fullscreen game
+    if (isTetrisMode) {
+        return <Game onClose={handleTetrisClose} />;
+    }
+
+    // --- Default Render (Table Planner) ---
+    // Otherwise, render the main planner application
     return (
         <div style={{
             maxWidth: '800px',
