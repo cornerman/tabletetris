@@ -1,1 +1,1 @@
-- in between changes automatically run typecheck with this command: npx tsc --noEmit
+- in between changes automatically run typecheck with command 'npx tsc --noEmit' and finally 'npm run build'
