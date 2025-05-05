@@ -1,6 +1,8 @@
 import GLPK from 'glpk.js'; // Import from installed package
 // Import the solver function from the external module
 import { solveSitting } from './solve_sitting.ts'; // Changed extension
+// Import GLPKInstance from the facade
+import { GLPKInstance } from './glpk_facade.ts';
 // Import the table extraction function
 import { extractTableCycle } from './matrix_to_table.ts'; // Changed extension
 
@@ -31,8 +33,8 @@ let people: Person[] = []; // Array to store person objects { id: number, name: 
 let nextPersonId = 0;
 // Store want/dislike states { 'pref_want_A_B': true/false, 'pref_dislike_A_B': true/false }
 let preferencesState: Record<string, boolean> = {}; // Give it an explicit type
-let glpk: any = null; // To store the initialized GLPK instance - Added basic type
-let solveTimeoutId: any = null; // For debouncing - Added basic type
+let glpk: GLPKInstance | null = null; // Use imported type, allow null before init
+let solveTimeoutId: NodeJS.Timeout | null = null; // Use NodeJS.Timeout type, allow null
 
 // --- DOM Elements ---
 // TODO: Add types
@@ -51,9 +53,11 @@ if (!clearAllBtn) throw new Error("DOM element #clearAllBtn not found!");
 
 // --- Utility Functions ---
 // TODO: Add types
-function debounce(func: Function, delay: number) {
-    return function (this: any, ...args: any[]) {
-        clearTimeout(solveTimeoutId);
+function debounce(func: (...args: any[]) => void, delay: number) { // Refined func type
+    return function (this: any, ...args: any[]) { // Keep inner 'any' for flexibility
+        if (solveTimeoutId !== null) { // Check before clearing
+            clearTimeout(solveTimeoutId);
+        }
         solveTimeoutId = setTimeout(() => {
             func.apply(this, args);
         }, delay);
@@ -415,7 +419,7 @@ async function triggerSolutionUpdate(): Promise<void> {
             // const GLPKFactory = (await import('https://cdn.jsdelivr.net/npm/glpk.js@4.0.2/dist/index.js')).default;
             // Import directly now
             const GLPKFactory = (await import('glpk.js')).default;
-            glpk = await GLPKFactory();
+            glpk = await GLPKFactory() as unknown as GLPKInstance; // Assert via unknown
             console.log("[DEBUG] GLPK Initialized.");
         } catch (err) {
             console.error("Failed to initialize GLPK:", err);
@@ -480,6 +484,18 @@ async function triggerSolutionUpdate(): Promise<void> {
         resultsContainer.appendChild(inputMatrixDiv);
 
 
+        // Add null check for glpk before calling the solver
+        if (!glpk) {
+            console.error("GLPK instance is not initialized. Cannot solve.");
+            // Add null check
+            if (!resultsContainer) {
+                console.error("Cannot display GLPK initialization error: resultsContainer not found.");
+                return; // Cannot update UI safely
+            }
+            resultsContainer.innerHTML += '<p style="color: red;">Error: Solver not ready.</p>';
+            return; // Exit if glpk is null
+        }
+
         // TODO: Add type for resultMatrix
         const resultMatrix = await solveSitting(glpk, preferences);
         console.log("Solver Result Matrix:");
@@ -516,7 +532,7 @@ async function triggerSolutionUpdate(): Promise<void> {
 
         saveState(); // Save state after successful solve and UI update
 
-    } catch (error: any) { // Add type
+    } catch (error: unknown) { // Catch as unknown
         console.error("Error during solving:", error);
         // Add null check
         if (!resultsContainer) {
@@ -528,7 +544,9 @@ async function triggerSolutionUpdate(): Promise<void> {
         inputMatrixDiv.innerHTML = '<h2>Input Preference Matrix (Solver Failed):</h2><pre>' + preferencesText + '</pre>';
         resultsContainer.appendChild(inputMatrixDiv);
         const errorDiv = document.createElement('div');
-        errorDiv.innerHTML = `<p style="color: red;">Error during solving: ${error.message || error}</p>`;
+        // Check if error is an Error object before accessing message
+        const errorMessage = (error instanceof Error) ? error.message : String(error);
+        errorDiv.innerHTML = `<p style="color: red;">Error during solving: ${errorMessage}</p>`;
         resultsContainer.appendChild(errorDiv);
     }
 }
