@@ -430,6 +430,43 @@ const Game: React.FC<GameProps> = ({ onClose }) => {
         })
     );
 
+    // Function for HARD DROP (Instant drop and lock)
+    const handleHardDrop = useCallback(() => {
+        if (gameOver) return;
+
+        let dropDistance = 0;
+        // Find how far the piece can drop using the *current* player state
+        // Make sure checkCollision is available in scope
+        while (!checkCollision(player, board, { dx: 0, dy: dropDistance + 1 })) {
+            dropDistance++;
+        }
+
+        clearLockDelay(); // Clear any pending lock delay regardless
+
+        if (dropDistance >= 0) { // Always attempt to lock/advance, even if distance is 0
+            // Move player instantly to the bottom position
+            const finalY = player.pos.y + dropDistance;
+
+            // Update player state immediately to the final position
+            setPlayer(prevPlayer => ({ ...prevPlayer, pos: { ...prevPlayer.pos, y: finalY } }));
+
+            console.log(`[DEBUG] Hard drop: Calculated finalY=${finalY}. Locking piece.`);
+
+            // Relying on setPlayer completing before lockPiece runs.
+            // If bugs occur here (piece locking at wrong place), consider refactoring lockPiece.
+            lockPieceAndClearLines(); // Uses the component's 'player' state
+
+            // Check gameOver *after* locking might have triggered it
+            if (!gameOver) {
+                advancePlayerFunctional();
+            } else {
+                console.log("[DEBUG] Hard drop caused game over, stopping timer.");
+                stopGravityTimer();
+            }
+        }
+
+    }, [gameOver, player, board, checkCollision, clearLockDelay, lockPieceAndClearLines, advancePlayerFunctional, stopGravityTimer]); // Added dependencies
+
     return (
         <div style={{
             width: '100vw',
@@ -438,10 +475,9 @@ const Game: React.FC<GameProps> = ({ onClose }) => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px',
+            justifyContent: 'center', // Center vertically overall
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden' // Restore overflow hidden
         }}>
             {/* Close Button */}
             <button
@@ -471,15 +507,7 @@ const Game: React.FC<GameProps> = ({ onClose }) => {
             {/* <h1 style={{ color: '#eee', marginBottom: '15px' }}>Tetris</h1> */}
 
             {/* Central Game Area Layout */}
-            <div className="tetris-central-area" style={{
-                display: 'flex',
-                flexDirection: 'column', // Stack top row and board vertically
-                alignItems: 'center',    // Center children horizontally
-                justifyContent: 'center', // Center vertically within its space
-                gap: '15px', // Gap between top row and board
-                // width/maxWidth will be controlled by CSS
-                flexGrow: 1, // Allow vertical growth if needed
-            }}>
+            <div className="tetris-central-area">
 
                 {/* NEW: Top Info Row */}
                 <div className="tetris-info-row" style={{
@@ -509,14 +537,23 @@ const Game: React.FC<GameProps> = ({ onClose }) => {
                     </div>
                 </div>
 
-                {/* Board Container - Simplified */}
-                <div style={{
-                    // Board container doesn't need much flex styling now
-                    // Let CSS or Board component handle sizing
-                    width: 'auto',
-                    // maxWidth: '400px' // REMOVE Example max-width for the board container
-                }}>
+                {/* Board Container */}
+                <div className="board-container">
                     <Board board={boardWithPlayer} />
+                </div>
+
+                {/* NEW: Mobile Controls Container */}
+                <div className="mobile-controls">
+                    {/* Row 1: Up (Rotate) */}
+                    <div className="controls-row controls-row-up">
+                        <button className="control-button" onClick={rotatePlayer} aria-label="Rotate">🔄</button> {/* Changed back to Rotate emoji */}                    </div>
+                    {/* Row 2: Left, Down, Right */}
+                    <div className="controls-row controls-row-directional">
+                        <button className="control-button" onClick={() => movePlayerHorizontal(-1)} aria-label="Move Left">⬅️</button>
+                        <button className="control-button" onClick={handleManualDrop} aria-label="Move Down">⬇️</button>
+                        <button className="control-button" onClick={() => movePlayerHorizontal(1)} aria-label="Move Right">➡️</button>
+                        {/* Removed Hard Drop Button */}
+                    </div>
                 </div>
 
             </div>

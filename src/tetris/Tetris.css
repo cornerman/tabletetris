@@ -7,8 +7,18 @@
     /* Center the whole game area block if needed, */
     /* assuming parent uses flex or grid for centering. */
     /* Inline styles already handle internal flex layout (column, align center) */
+    display: flex;
+    /* Ensure flex properties apply */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    /* Reduced gap between main sections */
     width: 90%;
     /* Example: Limit width */
+    padding: 10px;
+    /* Keep some padding around the whole area */
+    box-sizing: border-box;
 }
 
 /* Appearance for Preview box */
@@ -72,3 +82,57 @@
     }
 }
 */
+
+/* --- Mobile Controls --- */
+.mobile-controls {
+    display: flex;
+    flex-direction: column;
+    /* Stack control rows */
+    align-items: center;
+    /* Center rows horizontally */
+    gap: 0px;
+    /* Reduced space between rows */
+    margin-top: 8px;
+    /* Reduced space above controls */
+    width: 100%;
+    /* Take available width */
+    max-width: 300px;
+    /* Limit width */
+    user-select: none;
+    /* Prevent text selection on button mash */
+    -webkit-user-select: none;
+    /* Safari */
+    -moz-user-select: none;
+    /* Firefox */
+    -ms-user-select: none;
+    /* IE/Edge */
+}
+
+/* Special spacing for rows with different button counts if needed */
+/* Remove old overrides */
+/*
+.controls-row:first-child { 
+    justify-content: space-between; 
+    padding: 0 10%; 
+}
+.controls-row:last-child { 
+    justify-content: space-around; 
+}
+*/
+
+/* New overrides for specific rows */
+.controls-row-up {
+    justify-content: center;
+    /* Center the single 'Up' button */
+}
+
+.controls-row-directional {
+    justify-content: space-between;
+    /* Space out Left, Down, Right */
+    padding: 0 5%;
+    /* Add some horizontal padding */
+}
+
+.control-button {
+    /* ... existing code ... */
+}
