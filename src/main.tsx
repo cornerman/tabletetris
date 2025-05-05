@@ -458,8 +458,6 @@ function App() {
 
     return (
         <div style={{ fontFamily: 'sans-serif' }}>
-            <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>Table Sitting Solver</h1>
-
             {/* Tab Navigation */}
             <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid #ccc' }}>
                 <button
