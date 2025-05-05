@@ -593,7 +593,7 @@ function App() {
 
                                         // Style for icons (will be passive indicators now)
                                         const iconBaseStyle: React.CSSProperties = {
-                                            // Removed cursor: pointer
+                                            cursor: 'pointer',
                                             fontSize: '1.5em',
                                             margin: '0 8px', // Keep margin for spacing
                                             color: '#aaa',    // Dim color as they are passive
@@ -641,21 +641,23 @@ function App() {
                                         };
                                         // --- End Switch Styles ---
 
-                                        // Click handler for the switch track
-                                        const handleSwitchClick = (event: React.MouseEvent<HTMLDivElement>) => {
-                                            const trackRect = event.currentTarget.getBoundingClientRect();
-                                            const clickX = event.clientX - trackRect.left;
-                                            const thirdWidth = switchWidth / 3;
+                                        // Click handler for the switch track - NOW ONLY SETS TO NEUTRAL
+                                        const handleSwitchClick = (/*event: React.MouseEvent<HTMLDivElement>*/) => { // Event no longer needed
+                                            // const trackRect = event.currentTarget.getBoundingClientRect();
+                                            // const clickX = event.clientX - trackRect.left;
+                                            // const thirdWidth = switchWidth / 3;
 
-                                            let newState: 'want' | 'neutral' | 'dislike';
-                                            if (clickX < thirdWidth) {
-                                                newState = 'want';
-                                            } else if (clickX > switchWidth - thirdWidth) {
-                                                newState = 'dislike';
-                                            } else {
-                                                newState = 'neutral';
-                                            }
-                                            handlePreferenceChange(personBeingEdited.id, otherPerson.id, newState);
+                                            // let newState: 'want' | 'neutral' | 'dislike';
+                                            // if (clickX < thirdWidth) {
+                                            //     newState = 'want';
+                                            // } else if (clickX > switchWidth - thirdWidth) {
+                                            //     newState = 'dislike';
+                                            // } else {
+                                            //     newState = 'neutral';
+                                            // }
+                                            // handlePreferenceChange(personBeingEdited.id, otherPerson.id, newState);
+                                            // Simplify: Always set to neutral when clicking the switch track itself
+                                            handlePreferenceChange(personBeingEdited.id, otherPerson.id, 'neutral');
                                         };
 
                                         return (
@@ -669,15 +671,15 @@ function App() {
                                                     {/* Heart Icon (Passive Indicator) */}
                                                     <FaHeart
                                                         style={{ ...iconBaseStyle, color: isWantChecked ? '#4CAF50' : iconBaseStyle.color }}
-                                                        title={`Want to sit next to ${otherPerson.name}`}
-                                                    // No onClick
+                                                        title={`Click to set preference: WANT to sit next to ${otherPerson.name}`}
+                                                        onClick={() => handlePreferenceChange(personBeingEdited.id, otherPerson.id, 'want')}
                                                     />
 
                                                     {/* The Switch */}
                                                     <div
                                                         style={switchTrackStyle}
                                                         onClick={handleSwitchClick}
-                                                        title={`Set preference for ${otherPerson.name} (Left: Want, Middle: Neutral, Right: Don't Want)`}
+                                                        title={`Click to set preference: NEUTRAL towards ${otherPerson.name}`}
                                                     >
                                                         <div style={getKnobPosition()}></div> {/* The moving knob */}
                                                     </div>
@@ -685,8 +687,8 @@ function App() {
                                                     {/* Skull Icon (Passive Indicator) */}
                                                     <FaSkullCrossbones
                                                         style={{ ...iconBaseStyle, color: isDislikeChecked ? '#f44336' : iconBaseStyle.color }}
-                                                        title={`Do NOT want to sit next to ${otherPerson.name}`}
-                                                    // No onClick
+                                                        title={`Click to set preference: DO NOT want to sit next to ${otherPerson.name}`}
+                                                        onClick={() => handlePreferenceChange(personBeingEdited.id, otherPerson.id, 'dislike')}
                                                     />
                                                 </div>
                                             </div>
